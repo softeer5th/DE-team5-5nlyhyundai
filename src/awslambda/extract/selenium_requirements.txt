@@ -1,0 +1,6 @@
+requests
+beautifulsoup4
+pyarrow
+boto3
+psycopg2-binary
+python-dotenv
