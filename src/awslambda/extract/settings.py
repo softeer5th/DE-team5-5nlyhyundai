@@ -2,7 +2,7 @@ import psycopg2
 import os
 from dotenv import load_dotenv
 
-dotenv_lambda_path = "src/awslambda/extract/.env.lambda"
+dotenv_lambda_path = ".env.lambda"
 print(f"[INFO] .env 경로 확인: {dotenv_lambda_path}")
 
 load_dotenv(dotenv_lambda_path)

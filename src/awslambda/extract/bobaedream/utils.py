@@ -1,5 +1,6 @@
 import re
 import os
+from datetime import datetime
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -13,7 +14,9 @@ def clean_date_string(date_str):
     date_str = dofw_ptrn.sub('', date_str)
     # 추가 공백 제거
     date_str = ' '.join(date_str.split())
-    return date_str
+    date_datetime = datetime.strptime(date_str, '%Y.%m.%d %H:%M')
+    return date_datetime
+
 
 def prepare_for_spark(data_list, base_path):
     # 메인 포스트 데이터
@@ -36,3 +39,9 @@ def prepare_for_spark(data_list, base_path):
     
     pq.write_table(posts_table, f'{base_path}bobaedream_posts.parquet', compression='snappy')
     pq.write_table(comments_table, f'{base_path}bobaedream_comments.parquet', compression='snappy')
+
+def save_html(base_dir, html):
+    print(f"html 저장 경로: '{base_dir}'")
+    os.makedirs(base_dir, exist_ok=True)
+    with open(f'{base_dir}/bobaedream.html', 'w', encoding='utf-8') as f:
+        f.write(html)
