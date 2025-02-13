@@ -1,4 +1,4 @@
-import os
+from collections import defaultdict
 from typing import Dict, List, Optional
 from datetime import datetime
 
@@ -456,7 +456,9 @@ def save_s3_bucket_by_parquet(
     ) -> Optional[bool]:
     """
     checked_at_dt: datetime 객체
+
     platform: 적용한 플랫폼
+    
     data: [ # 포스팅
         {
         플랫폼 "platform"
@@ -496,43 +498,46 @@ def save_s3_bucket_by_parquet(
     hour = str(checked_at_dt.hour)
     minute = str(checked_at_dt.minute)
 
-    posts = []
     # 코멘트 데이터
-    comments = []
-    
+    keywords_posts = defaultdict(list)
+    keywords_comments = defaultdict(list)
+
     for post in data:
         # 코멘트 분리
         post_comments = post.pop('comment', [])
+        keywords = post.get('keywords', ["no_keyword"])
+        joined_keywords = "-".join(sorted(keywords))
+        keywords_posts[joined_keywords].append(post)
         # post_id를 기준으로 연결
         for comment in post_comments:
             comment['post_id'] = post['post_id']
-            comments.append(comment)
-        posts.append(post)
-    
-    # 각각 Parquet로 저장
-    posts_table = pa.Table.from_pylist(posts)
-    comments_table = pa.Table.from_pylist(comments)
+            keywords_comments[joined_keywords].append(comment)
 
-    # S3 업로드 경로 설정
-    s3_posts_key = f"{date}/{hour}/{minute}/{platform}_posts.parquet"
-    s3_comments_key = f"{date}/{hour}/{minute}/{platform}_comments.parquet"
-    
-    # smart_open을 사용하여 직접 S3에 업로드
     try:
-        # 게시물 데이터 업로드
-        with smart_open.open(f"s3://{S3_BUCKET}/{s3_posts_key}", "wb") as s3_file:
-            pq.write_table(posts_table, s3_file, compression='snappy')
-        
-        # 댓글 데이터 업로드
-        with smart_open.open(f"s3://{S3_BUCKET}/{s3_comments_key}", "wb") as s3_file:
-            pq.write_table(comments_table, s3_file, compression='snappy')
+        for keyword, posts in keywords_posts.items():
+            # Parquet로 변환
+            posts_table = pa.Table.from_pylist(posts)
+            comments_table = pa.Table.from_pylist(keywords_comments[keyword])
+
+            # S3 업로드 경로 설정
+            s3_posts_key = f"{date}/{hour}/{minute}/{keyword}/{platform}_posts.parquet"
+            s3_comments_key = f"{date}/{hour}/{minute}/{keyword}/{platform}_comments.parquet"
+
+            # 게시물 데이터 업로드
+            with smart_open.open(f"s3://{S3_BUCKET}/{s3_posts_key}", "wb") as s3_file:
+                pq.write_table(posts_table, s3_file, compression='snappy')
             
-        print(f"[INFO] S3 업로드 완료: {s3_posts_key}, {s3_comments_key}")
+            # 댓글 데이터 업로드
+            with smart_open.open(f"s3://{S3_BUCKET}/{s3_comments_key}", "wb") as s3_file:
+                pq.write_table(comments_table, s3_file, compression='snappy')
+            
+            print(f"[INFO] S3 업로드 완료 (키워드: {keyword}): {s3_posts_key}, {s3_comments_key}")
+
         return True
         
     except Exception as e:
         print(f"[ERROR] S3 업로드 실패: {str(e)}")
-        return None
+        return None    
    
 
 if __name__ == "__main__":
