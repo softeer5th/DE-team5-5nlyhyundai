@@ -4,7 +4,7 @@ import re
 from typing import List, Dict, Optional
 from datetime import datetime
 
-from bobaedream.utils import (
+from bobaedream_utils import (
     clean_date_string,
     prepare_for_spark,
     save_html,
@@ -175,12 +175,24 @@ def parse_post_meta(post, post_meta):
     except Exception as e:
         print(f"[ERROR] 조회수 파싱 실패: {e}")
         view = -999
-    like = count_group_em[2].text
-    date_str = count_group.text
-    date_str = date_str.split('|')[2].strip()
-    posting_datetime = clean_date_string(date_str)
+    try:
+        like = count_group_em[2].text
+    except:
+        print(f"[ERROR] 좋아요 파싱 실패: {e}")
+        like = -999
+    date_raw = count_group.text
+    date_str = date_raw.split('|')[-1].strip()
+    try:
+        posting_datetime = clean_date_string(date_str)
+    except Exception as e:
+        print(f"[ERROR] 날짜 파싱 실패: {e} / 재시도...")
+        raise e
     post['view'] = view
-    post['like'] = like # like 등은 여기서 처리해야 함.        
+    try:
+        post['like'] = like # like 등은 여기서 처리해야 함.        
+    except Exception as e:
+        print(f"[ERROR] 좋아요 수 파싱 실패: {e}")
+        post['like'] = -999
     post['created_at'] = posting_datetime
 
 def parse_detail() -> Optional[List[Dict]]:
@@ -304,6 +316,7 @@ def parse_detail() -> Optional[List[Dict]]:
                     })
                 except Exception as e:
                     print(f"[ERROR] 댓글 파싱 실패: {e}")
+                    comment_data.append({})
                     continue
 
         post['comment'] = comment_data
@@ -354,7 +367,7 @@ if __name__ == '__main__':
     save_s3_bucket_by_parquet(
         checked_at,
         platform='bobaedream', 
-        data=dump_list
+        details_data=dump_list
     )
 
     
