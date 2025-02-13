@@ -7,6 +7,7 @@ import psycopg2.extras
 import pyarrow as pa
 import pyarrow.parquet as pq
 import boto3
+import smart_open
 
 from settings import (
     DB_HOST,
@@ -449,13 +450,12 @@ def update_changed_stats(
             return None
 
 def save_s3_bucket_by_parquet(
-        start_dt: datetime,
+        checked_at_dt: datetime,
         platform: str,
         data: List[Dict],
-        temp_dir: str = '/tmp',
     ) -> Optional[bool]:
     """
-    start_dt: datetime 객체
+    checked_at_dt: datetime 객체
     platform: 적용한 플랫폼
     data: [ # 포스팅
         {
@@ -492,62 +492,48 @@ def save_s3_bucket_by_parquet(
         print("[ERROR] S3 클라이언트 생성 실패")
         return None
     
+    date = checked_at_dt.date().strftime("%Y-%m-%d")
+    hour = str(checked_at_dt.hour)
+    minute = str(checked_at_dt.minute)
+
+    posts = []
+    # 코멘트 데이터
+    comments = []
+    
+    for post in data:
+        # 코멘트 분리
+        post_comments = post.pop('comment', [])
+        # post_id를 기준으로 연결
+        for comment in post_comments:
+            comment['post_id'] = post['post_id']
+            comments.append(comment)
+        posts.append(post)
+    
+    # 각각 Parquet로 저장
+    posts_table = pa.Table.from_pylist(posts)
+    comments_table = pa.Table.from_pylist(comments)
+
+    # S3 업로드 경로 설정
+    s3_posts_key = f"{date}/{hour}/{minute}/{platform}_posts.parquet"
+    s3_comments_key = f"{date}/{hour}/{minute}/{platform}_comments.parquet"
+    
+    # smart_open을 사용하여 직접 S3에 업로드
     try:
-        date = start_dt.date().strftime("%Y-%m-%d")
-        hour = str(start_dt.hour)
-        minute = str(start_dt.minute)
+        # 게시물 데이터 업로드
+        with smart_open.open(f"s3://{S3_BUCKET}/{s3_posts_key}", "wb") as s3_file:
+            pq.write_table(posts_table, s3_file, compression='snappy')
         
-        # Lambda의 /tmp 디렉토리 사용
-        posts_local_path = f'{temp_dir}/{platform}_posts.parquet'
-        comments_local_path = f'{temp_dir}/{platform}_comments.parquet'
-
-        posts = []
-        # 코멘트 데이터
-        comments = []
-        
-        for post in data:
-            # 코멘트 분리
-            post_comments = post.pop('comment', [])
-            # post_id를 기준으로 연결
-            for comment in post_comments:
-                comment['post_id'] = post['post_id']
-                comments.append(comment)
-            posts.append(post)
-        
-        # 각각 Parquet로 저장
-        posts_table = pa.Table.from_pylist(posts)
-        comments_table = pa.Table.from_pylist(comments)
-
-        # 로컬에 parquet 파일 저장
-        pq.write_table(posts_table, posts_local_path, compression='snappy')
-        pq.write_table(comments_table, comments_local_path, compression='snappy')
-        
-        # S3 업로드 경로 설정
-        s3_posts_key = f"{date}/{hour}/{minute}/{platform}_posts.parquet"
-        s3_comments_key = f"{date}/{hour}/{minute}/{platform}_comments.parquet"
-        
-        # S3에 업로드
-        s3_client.upload_file(posts_local_path, S3_BUCKET, s3_posts_key)
-        s3_client.upload_file(comments_local_path, S3_BUCKET, s3_comments_key)
-        
-        # 임시 파일 삭제
-        os.remove(posts_local_path)
-        os.remove(comments_local_path)
-        
+        # 댓글 데이터 업로드
+        with smart_open.open(f"s3://{S3_BUCKET}/{s3_comments_key}", "wb") as s3_file:
+            pq.write_table(comments_table, s3_file, compression='snappy')
+            
+        print(f"[INFO] S3 업로드 완료: {s3_posts_key}, {s3_comments_key}")
         return True
         
     except Exception as e:
-        print(f"[ERROR] 파일 처리 실패: {str(e)}")
-        # 에러 발생시 임시 파일 정리 시도
-        try:
-            if os.path.exists(posts_local_path):
-                os.remove(posts_local_path)
-            if os.path.exists(comments_local_path):
-                os.remove(comments_local_path)
-        except:
-            pass
-        raise
-    
+        print(f"[ERROR] S3 업로드 실패: {str(e)}")
+        return None
+   
 
 if __name__ == "__main__":
     db_conn = get_db_connection()

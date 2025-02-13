@@ -330,10 +330,11 @@ if __name__ == '__main__':
     # python -m bobaedream.bobaedream_exec 로 실행
     # 이게 크롤링한 시간.
     checked_at = datetime.now()
+    # 게시글 시작 날짜
     start_date = '2025.02.11'
+    # 게시글 시작 날짜로부터 2주치 데이터를 뽑아냄.
     start_dt = datetime.strptime(start_date, '%Y.%m.%d')
     end_dt = start_dt + timedelta(days=14)
-    # 이후 2주치의 데이터를 뽑아냄.
     # keyword_list = ['벤츠 배터리 화재']
     keyword_list = ['벤츠', '배터리', '화재']
     dump_list = []
@@ -350,7 +351,10 @@ if __name__ == '__main__':
                 print(f"[INFO] 보배드림 검색 종료: {keyword}")
                 break
 
-
-    prepare_for_spark(dump_list, './')
+    save_s3_bucket_by_parquet(
+        checked_at,
+        platform='bobaedream', 
+        data=dump_list
+    )
 
     
