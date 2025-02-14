@@ -5,4 +5,5 @@ COPY . ${LAMBDA_TASK_ROOT}
 RUN pip install --upgrade pip
 RUN pip install -r requests_requirements.txt
 
-CMD ["bobaedream.lambda_search.lambda_handler"]
+CMD ["bobaedream_lambda_search.lambda_handler"]
+# override CMD. This is the entry point of the lambda function.
