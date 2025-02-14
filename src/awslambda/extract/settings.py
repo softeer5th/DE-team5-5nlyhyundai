@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 
 dotenv_lambda_path = ".env.lambda"
 print(f"[INFO] .env 경로 확인: {dotenv_lambda_path}")
+print("[INFO] 경로에 .env.lambda가 있나요?",os.path.exists(dotenv_lambda_path))
 
 load_dotenv(dotenv_lambda_path)
 

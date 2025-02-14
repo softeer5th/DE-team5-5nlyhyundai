@@ -21,88 +21,11 @@ from common_utils import (
 BASIC_URL = "https://www.clien.net/service/search?q={query}&sort=recency&p={page_num}&boardCd=&isBoard=false"
 CLIEN_URL = "https://www.clien.net"
 
-SEARCH_TERM = timedelta(days=14)
-
 SEARCH_TABLE = "probe_clien"
 
-
-SI_PREFIX = {"k":1000, "M":1000000, "G": 1000000000}
-
-def search(event, context):
-    # parameters
-    timestamp = event.get("timestamp")
-    query = event.get("query")
-
-    event_time = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f%z")
-    event_time = datetime.now() - timedelta(hours=9)
-    kst_time = event_time + timedelta(hours=9)  # UTC+9 (KST)
-    
-    conn = get_db_connection()
-
-    isNextPage = True
-    p = 0
-
-    while isNextPage:
-        full_url = BASIC_URL.format(query=urllib.parse.quote(query), page_num=p)
-        headers = {
-            "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-            "User-Agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
-        }
-
-        REQUEST_REST = 1 + random.random()
-        print("try:", full_url)
-        response = requests.get(full_url, headers=headers, allow_redirects=False)
-        if response.status_code != 200:
-            print("status code:", response.status_code)
-            print("headers:", response.headers)
-            print("body:", response.text)
-            continue
-
-        soup = BeautifulSoup(response.content, "html.parser")
-        if not soup.find("a", class_="board-nav-page active"):
-            break
-
-        posts_raw = soup.find_all("div", class_="list_item symph_row jirum")
-        for post in posts_raw:
-            
-            created_at_str = post.find("span", class_="timestamp").text
-            created_at = datetime.strptime(created_at_str, "%Y-%m-%d %H:%M:%S")
-            if (created_at < kst_time - SEARCH_TERM):
-                isNextPage = False
-                break
-            
-            hit_raw = post.find("span", class_="hit").text.split(" ")
-            hit = float(hit_raw[0])
-
-            if len(hit_raw) > 1:
-                hit *= SI_PREFIX[hit_raw[1]]
-            hit = int(hit)
-
-            try:comment_cnt = post.find("span", class_="rSymph05").text
-            except: comment_cnt = 0
-            else: comment_cnt = int(comment_cnt)
-            
-            post_content = {
-                "url": CLIEN_URL + post.find("a", class_="subject_fixed")["href"],
-                "post_id": post["data-board-sn"],
-                "status": "CHANGED",
-                "comment_count": comment_cnt,
-                "created_at": created_at,
-                "checked_at": kst_time,
-                "view": hit,
-                "keyword": query
-            }
-            upsert_post_tracking_data(conn, SEARCH_TABLE ,post_content)
-        
-        time.sleep(REQUEST_REST)
-        p += 1
-        
 def detail(event, context):
     # parameters
-    timestamp = event.get("timestamp")
-    event_time = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f%z")
-    event_time = datetime.now() - timedelta(hours=9)
-    kst_time = event_time + timedelta(hours=9)  # UTC+9 (KST)
+    timestamp = 0
     
     all_post = []
 
@@ -127,6 +50,8 @@ def detail(event, context):
         print("[INFO] 파싱할 게시물이 없습니다.")
         return
 
+    timestamp = details[0]["checked_at"]
+    
     for post in details:
         post_url = post["url"]
         REQUEST_REST = 1 + random.random()
@@ -163,7 +88,6 @@ def detail(event, context):
                 "dislike": None
             }
             all_comments.append(comment_data)
-        print(post.keys)
 
         hit = soup.find("div", class_="post_author").find("span", class_="view_count").find("strong").text
         try: hit = int(hit)
@@ -188,18 +112,4 @@ def detail(event, context):
         print(f"{post_url} - Done!")
         time.sleep(REQUEST_REST)
 
-    save_s3_bucket_by_parquet(kst_time, platform='clien', data=all_post)
-
-
-"""
-    # KST 시간 출력 (형식: 'YYYY-MM-DD HH:MM:SS')
-    kst_time_str = kst_time.strftime('%Y-%m-%d %H:%M:%S')
-
-    print("input:", event_time, "\noutput:", kst_time_str)
-
-    return {
-        "statusCode": 200,
-        "body": json.dumps({"timestamp": timestamp, "kst_time": kst_time_str})
-    }
-"""
-
+    save_s3_bucket_by_parquet(timestamp, platform='clien', data=all_post)

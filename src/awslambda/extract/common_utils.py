@@ -183,7 +183,7 @@ def upsert_post_tracking_data(
                 )
             else:                
                 assert isinstance(payload['status'], str), "status는 문자열이어야 합니다."
-                unstable_status = result['status'] in ["FAILED", "BANNED"]
+                unstable_status = payload['status'] in ["FAILED", "BANNED"]
                 if unstable_status:
                     print(f"[WARN] 크롤링 문제 발생 / 상태 업데이트 / 기존 데이터: {url}")
                     if payload['status'] == "FAILED":                        
