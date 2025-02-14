@@ -136,8 +136,13 @@ def parse_detail() -> Optional[List[Dict]]:
                 post['content'] = cleaned_content
             except Exception as e:
                 print(f"[ERROR] 본문 내용 파싱 실패: {e}")
-            
-            post_meta = soup.find('div', class_='writerProfile').find('dl')
+                continue
+            try:
+                post_meta = soup.find('div', class_='writerProfile').find('dl')
+            except Exception as e:
+                print(f"[ERROR] 포스팅 메타데이터 파싱 실패: {e}")
+                post_meta = None
+                continue
             if post_meta is None:
                 print("[ERROR] 포스팅 메타데이터 파싱 실패.")
             else:

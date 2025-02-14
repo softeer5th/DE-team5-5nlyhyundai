@@ -415,6 +415,7 @@ def update_changed_stats(
     ) -> Optional[bool]:
     """
     detail에서 변화된 포스트의 정보를 업데이트합니다.
+    UNCHANGED로 변경도 진행합니다.
     Args:
        conn: PostgreSQL 데이터베이스 연결 객체
        table_name: 업데이트할 테이블 이름
@@ -448,6 +449,43 @@ def update_changed_stats(
         except Exception as e:
             print(f"[ERROR] comment_count, view 수정 에러: {e}")
             return None
+
+def log_crawling_metadata(
+        conn,
+        checked_at: datetime,
+        keywords_str: str,
+        platform: str,
+    ):
+    """
+    checked_at: datetime 객체
+    """
+    try:
+        with conn.cursor() as cursor:
+            sql = f"""
+            INSERT INTO crawling_metadata (
+                checked_at,
+                keywords_str,
+                platform,
+                bucket_name
+            ) VALUES (
+                %s, %s, %s, %s
+            )
+            """
+            cursor.execute(
+                sql,
+                (
+                    checked_at,
+                    keywords_str,
+                    platform,
+                    S3_BUCKET
+                )
+            )
+            conn.commit()
+            return True
+    except Exception as e:
+        print(f"[ERROR] DB 메타데이터 로깅 에러: {e}")
+        return None
+    
 
 def save_s3_bucket_by_parquet(
         checked_at_dt: datetime,
@@ -506,7 +544,7 @@ def save_s3_bucket_by_parquet(
         # 코멘트 분리
         post_comments = post.pop('comment', [])
         keywords = post.get('keywords', ["no_keyword"])
-        joined_keywords = "-".join(sorted(keywords))
+        joined_keywords = "-".join((keywords))
         keywords_posts[joined_keywords].append(post)
         # post_id를 기준으로 연결
         for comment in post_comments:
@@ -525,13 +563,15 @@ def save_s3_bucket_by_parquet(
 
             # 게시물 데이터 업로드
             with smart_open.open(f"s3://{S3_BUCKET}/{s3_posts_key}", "wb") as s3_file:
-                pq.write_table(posts_table, s3_file, compression='snappy')
+                pq.write_table(posts_table, s3_file, compression='snappy')            
             
             # 댓글 데이터 업로드
             with smart_open.open(f"s3://{S3_BUCKET}/{s3_comments_key}", "wb") as s3_file:
                 pq.write_table(comments_table, s3_file, compression='snappy')
             
             print(f"[INFO] S3 업로드 완료 (키워드: {keyword}): {s3_posts_key}, {s3_comments_key}")
+            conn = get_db_connection()
+            log_crawling_metadata(conn, checked_at_dt, keyword, platform)
 
         return True
         

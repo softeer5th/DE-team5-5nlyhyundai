@@ -272,8 +272,13 @@ def parse_detail() -> Optional[List[Dict]]:
             post['content'] = cleaned_content
         except Exception as e:
             print(f"[ERROR] 본문 내용 파싱 실패: {e}")
-        
-        post_meta = soup.find('div', class_='writerProfile').find('dl')
+            continue
+        try:
+            post_meta = soup.find('div', class_='writerProfile').find('dl')
+        except Exception as e:
+            print(f"[ERROR] 포스팅 메타데이터 파싱 실패: {e}")
+            post_meta = None
+            continue
         if post_meta is None:
             print("[ERROR] 포스팅 메타데이터 파싱 실패.")
         else:
@@ -344,7 +349,7 @@ if __name__ == '__main__':
     # 이게 크롤링한 시간.
     checked_at = datetime.now()
     # 게시글 시작 날짜
-    start_date = '2025.02.11'
+    start_date = '2025.02.12'
     # 게시글 시작 날짜로부터 2주치 데이터를 뽑아냄.
     start_dt = datetime.strptime(start_date, '%Y.%m.%d')
     end_dt = start_dt + timedelta(days=14)
@@ -365,9 +370,9 @@ if __name__ == '__main__':
                 break
 
     save_s3_bucket_by_parquet(
-        checked_at,
+        checked_at_dt=checked_at,
         platform='bobaedream', 
-        details_data=dump_list
+        data=dump_list
     )
 
     
