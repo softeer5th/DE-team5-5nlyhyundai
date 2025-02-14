@@ -45,3 +45,33 @@ def save_html(base_dir, html):
     os.makedirs(base_dir, exist_ok=True)
     with open(f'{base_dir}/bobaedream.html', 'w', encoding='utf-8') as f:
         f.write(html)
+
+
+def post_id_salt(post_id, category):
+    category_salt = {
+        "베스트글": "a",
+        "자유게시판": "b",
+        "정치게시판": "c",
+        "시승기·배틀·목격담": "d",
+        "유명인의 차": "e",
+        "자동차뉴스": "f",
+        "보배드림 이야기": "g",
+        "제안·건의": "h",
+        "이벤트": "i",
+        "유머게시판": "j",
+        "교통사고·블박": "k",
+        "국산차게시판": "m",
+        "수입차게시판": "n",
+        "내차사진": "l",
+        "직찍·특종발견": "o",
+        "자동차사진·동영상": "p",
+        "장착시공사진": "q",
+        "자유사진·동영상": "r",
+        "레이싱모델": "s",
+        "군사·무기": "t",
+        "트럭·버스·중기": "u",
+        "항공·해운·철도": "v",
+        "오토바이·자전거": "w",
+        "올드카·추억거리": "x",
+    }
+    return category_salt[category] + post_id

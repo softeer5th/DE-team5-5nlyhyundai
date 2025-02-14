@@ -6,6 +6,10 @@ import time
 import requests
 from bs4 import BeautifulSoup
 
+from bobaedream_utils import (
+    post_id_salt
+)
+
 from common_utils import (
     get_db_connection,
     save_s3_bucket_by_parquet,
@@ -101,8 +105,7 @@ def parse_search(
                 continue
             else:
                 payload['title'] = title
-                payload['url'] = f"https://www.bobaedream.co.kr{url}"
-                payload['post_id'] = url.split('No=')[1]
+                payload['url'] = f"https://www.bobaedream.co.kr{url}"                
 
             # 각 li 안에서 dd > span 찾기
             try:    
@@ -113,6 +116,8 @@ def parse_search(
                     # continue
                 payload['category'] = spans[0].text
                 payload['writer'] = spans[1].text
+                payload['post_id'] = url.split('No=')[1]
+                payload['post_id'] = post_id_salt(payload['post_id'], payload['category'])
                 created_at = spans[2].text
             except Exception as e:
                 print(f"span 태그가 없습니다. : {e}")
