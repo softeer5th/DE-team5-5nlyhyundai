@@ -197,8 +197,8 @@ def upsert_post_tracking_data(
                 assert isinstance(payload['view'], int), "view는 정수여야 합니다."
                 assert isinstance(payload['keyword'], str), "keyword은 문자열이어야 합니다."
                 has_valuable_change = (
-                    payload['view'] - result['view'] > VIEW_THRESHOLD
-                    or payload['comment_count'] > result['comment_count']
+                    result['view'] - payload['view'] > VIEW_THRESHOLD
+                    or result['comment_count'] > payload['comment_count']
                 )
                 new_keyword_event = payload['keyword'] != "" and payload['keyword'] not in result['keywords']
                 if has_valuable_change or new_keyword_event:
