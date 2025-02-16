@@ -23,6 +23,7 @@ from common_utils import (
     update_status_changed,
     update_status_unchanged,
     update_changed_stats,
+    get_my_ip
 )
 linebreak_ptrn = re.compile(r'(\n){2,}')  # 줄바꿈 문자 매칭
 
@@ -188,32 +189,47 @@ def parse_detail() -> Optional[List[Dict]]:
                         continue
         
             post['comment'] = comment_data
+            post['status'] = 'UNCHANGED'
             is_success = update_changed_stats(conn, table_name, post['url'], post['comment_count'], post['view'], post['created_at'])
             if is_success:
                 print(f"[INFO] {post['url']} 업데이트 성공")
             else:
                 print(f"[INFO] {post['url']} 업데이트 실패")
         except Exception as e:
+            post['status'] = 'FAILED'
             update_status_failed(conn, table_name, post['url'])
-            print(f"[ERROR] {post['url']} 업데이트 실패: {e}")
+            print(f"[ERROR] {post['url']} 업데이트 실패: {e}")    
 
-    return details        
+    return [post for post in details if post['status'] == 'UNCHANGED']
         
 
 def lambda_handler(event, context):
     # python -m bobaedream.bobaedream_exec 로 실행
+    get_my_ip()
     table_name = 'probe_bobae'
     details_data = parse_detail()
+    if not details_data:
+        return {
+            'statusCode': 201,
+            'body': '[INFO] 업데이트할 데이터가 없습니다.'
+        }
     try:
         save_s3_bucket_by_parquet(
             checked_at_dt=details_data[0]['checked_at'],
             platform='bobaedream', 
             data=details_data
         )
+        return {
+            'statusCode': 200,
+            'body': f'[INFO] S3 저장 완료: {len(details_data)} 건'
+        }
     except Exception as e:
         print(f"[ERROR] S3 저장 실패: {e}")
         conn = get_db_connection()
         if details_data:
             for detail in details_data:
                 update_status_failed(conn, table_name, detail['url'])
-        return
+        return {
+            'statusCode': 500,
+            'body': '[ERROR] S3 저장 실패'
+        }

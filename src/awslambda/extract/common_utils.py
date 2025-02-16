@@ -8,6 +8,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import boto3
 import smart_open
+import requests
 
 from settings import (
     DB_HOST,
@@ -196,8 +197,8 @@ def upsert_post_tracking_data(
                 assert isinstance(payload['view'], int), "view는 정수여야 합니다."
                 assert isinstance(payload['keyword'], str), "keyword은 문자열이어야 합니다."
                 has_valuable_change = (
-                    payload['view'] - result['view'] > VIEW_THRESHOLD
-                    or payload['comment_count'] > result['comment_count']
+                    result['view'] - payload['view'] > VIEW_THRESHOLD
+                    or result['comment_count'] > payload['comment_count']
                 )
                 new_keyword_event = payload['keyword'] != "" and payload['keyword'] not in result['keywords']
                 if has_valuable_change or new_keyword_event:
@@ -578,7 +579,20 @@ def save_s3_bucket_by_parquet(
     except Exception as e:
         print(f"[ERROR] S3 업로드 실패: {str(e)}")
         return None    
-   
+
+def get_my_ip():
+    try:
+        # Option 1: Using ipify API
+        response = requests.get('https://api.ipify.org')
+        print(f"[INFO] AWS NAT Gateway 변환 이후 IP: {response.text.strip()}")
+    except:
+        try:
+            # Option 2: Alternative IP service if ipify fails
+            response = requests.get('https://checkip.amazonaws.com')
+            print(f"[INFO] AWS NAT Gateway 변환 이후 IP: {response.text.strip()}")
+        except:
+            return "Failed to get IP address"
+
 
 if __name__ == "__main__":
     db_conn = get_db_connection()

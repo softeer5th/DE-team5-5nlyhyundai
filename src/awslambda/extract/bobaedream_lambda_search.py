@@ -12,8 +12,8 @@ from bobaedream_utils import (
 
 from common_utils import (
     get_db_connection,
-    save_s3_bucket_by_parquet,
     upsert_post_tracking_data,
+    get_my_ip
 )
 linebreak_ptrn = re.compile(r'(\n){2,}')  # 줄바꿈 문자 매칭
 
@@ -52,6 +52,7 @@ def extract_bobaedream(start_date, page_num, keyword):
         )
     # cookies = response.cookies
     # response_headers = response.headers
+    get_my_ip()
     if response.status_code != 200:
         print(f"확인 필요! status code: {response.status_code}")
         if response.status_code == 403:
@@ -124,6 +125,7 @@ def parse_search(
                 continue
             else:
                 created_at_dt = datetime.strptime(created_at, '%y. %m. %d')
+                created_at_dt = created_at_dt.replace(tzinfo=timezone(timedelta(hours=9)))
                 payload['created_at'] = created_at_dt
                     # 2000년대로 가정
                 if created_at_dt.year < 100:
@@ -177,7 +179,8 @@ def lambda_handler(event, context):
     if start_date is None:
         start_dt = checked_at - timedelta(days=14)
     else:
-        start_dt = datetime.strptime(start_date, '%Y-%m-%d')    
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        start_dt = start_dt.replace(tzinfo=timezone.utc)  # UTC로 변환
     
     # 게시글 종료 날짜
     end_date = event.get('end_date')
@@ -185,6 +188,9 @@ def lambda_handler(event, context):
         end_dt = checked_at + timedelta(days=1)
     else:
         end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+        end_dt = end_dt.replace(tzinfo=timezone.utc)
+    
+    get_my_ip()
     
     # 검색할 키워드
     keyword = event.get('keyword')
