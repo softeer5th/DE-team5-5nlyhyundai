@@ -59,8 +59,7 @@ def search(event, context):
     while isNextPage:
         full_url = BASIC_URL.format(query=urllib.parse.quote(query), page_num=p)
         headers = {
-            "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-            "User-Agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+            "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
         }
 
         REQUEST_REST = 1 + random.random()
@@ -70,7 +69,7 @@ def search(event, context):
             print("status code:", response.status_code)
             print("headers:", response.headers)
             print("body:", response.text)
-            continue
+            break
 
         soup = BeautifulSoup(response.content, "html.parser")
         if not soup.find("a", class_="board-nav-page active"):
