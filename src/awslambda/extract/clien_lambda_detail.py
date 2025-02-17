@@ -88,9 +88,11 @@ def detail(event, context):
             }
             all_comments.append(comment_data)
 
-        hit = soup.find("div", class_="post_author").find("span", class_="view_count").find("strong").text
-        try: hit = int(hit)
-        except: hit = post["view"]
+        try: 
+            hit = soup.find("div", class_="post_author").find("span", class_="view_count").find("strong").text
+            hit = int(hit)
+        except: 
+            hit = post["view"]
 
         post_data = {
             "keywords": post["keywords"],

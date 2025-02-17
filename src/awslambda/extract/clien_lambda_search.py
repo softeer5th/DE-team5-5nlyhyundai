@@ -81,11 +81,11 @@ def search(event, context):
             created_at_str = post.find("span", class_="timestamp").text
             created_at = datetime.strptime(created_at_str, "%Y-%m-%d %H:%M:%S")
             if created_at < start_dt:
-                continue
-
-            if (created_at > end_dt):
                 isNextPage = False
                 break
+
+            if (created_at > end_dt):
+                continue
             
             hit_raw = post.find("span", class_="hit").text.split(" ")
             hit = float(hit_raw[0])
