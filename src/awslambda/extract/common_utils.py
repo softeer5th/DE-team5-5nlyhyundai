@@ -545,7 +545,7 @@ def save_s3_bucket_by_parquet(
         # 코멘트 제거
         post.pop('id', None)
         post.pop('status', None)
-        post['platform'] = platform
+        post.pop('checked_at', None)
         try:
             post['like'] = int(post['like'])
         except:
