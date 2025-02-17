@@ -55,6 +55,7 @@ def parse_post_meta(post, post_meta):
         posting_datetime = datetime.strptime('0000-01-01', '%Y-%m-%d')
     post['view'] = view
     post['like'] = like # like 등은 여기서 처리해야 함.        
+    post['dislike'] = None
     post['created_at'] = posting_datetime
 
 def parse_detail() -> Optional[List[Dict]]:
@@ -92,7 +93,7 @@ def parse_detail() -> Optional[List[Dict]]:
     if details == []:
         print("[INFO] 파싱할 게시물이 없습니다.")
         return
-
+    payloads = []
     for post in details:
         try:
             post_url = post['url']
@@ -126,8 +127,8 @@ def parse_detail() -> Optional[List[Dict]]:
                 print(f"[INFO] 댓글이 없습니다. {e} / post_url: {post_url}")
                 has_comment = False
                 comment_count = 0
-            
-            post['comment_count'] = comment_count
+            finally:
+                post['comment_count'] = comment_count
 
             # 본문 내용 파싱
             content_element = soup.find('div', class_='bodyCont')
@@ -156,10 +157,10 @@ def parse_detail() -> Optional[List[Dict]]:
                 for comment in comment_list: # 
                     if "삭제된 댓글입니다" in comment.text:
                         comment_data.append({
-                            # 'created_at': None,
-                            # 'content': None,
-                            # 'like': None,
-                            # 'dislike': None
+                            'created_at': None,
+                            'content': None,
+                            'like': None,
+                            'dislike': None
                         })
                         continue
                     try:
@@ -186,21 +187,41 @@ def parse_detail() -> Optional[List[Dict]]:
                         })
                     except Exception as e:
                         print(f"[ERROR] 댓글 파싱 실패: {e}")
-                        continue
-        
-            post['comment'] = comment_data
+                        continue        
+            payloads.append({
+                'platform': post['platform'],
+                'title': post['title'],
+                'post_id': post['post_id'],
+                'url': post['url'],
+                'content': post['content'],
+                'view': post['view'],
+                'created_at': post['created_at'],
+                'like': post['like'],
+                'dislike': post['dislike'],
+                'comment_count': post['comment_count'],
+                'keyword': post['keywords'],
+                'comment': comment_data,
+                'status': 'UNCHANGED',
+            })
+            
             post['status'] = 'UNCHANGED'
             is_success = update_changed_stats(conn, table_name, post['url'], post['comment_count'], post['view'], post['created_at'])
             if is_success:
                 print(f"[INFO] {post['url']} 업데이트 성공")
             else:
                 print(f"[INFO] {post['url']} 업데이트 실패")
+            
         except Exception as e:
             post['status'] = 'FAILED'
+            payloads.append({
+                'status': 'FAILED',
+            })
             update_status_failed(conn, table_name, post['url'])
-            print(f"[ERROR] {post['url']} 업데이트 실패: {e}")    
+            print(f"[ERROR] {post['url']} 업데이트 실패 / 이유: {e}")    
 
-    return [post for post in details if post['status'] == 'UNCHANGED']
+        
+
+    return [payload for payload in payloads if payload['status'] == 'UNCHANGED']
         
 
 def lambda_handler(event, context):
