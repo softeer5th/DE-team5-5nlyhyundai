@@ -76,13 +76,14 @@ def detail(event, context):
             comment_content = row.find("div", class_="comment_view").get_text(separator="\n", strip=True)
             comment_created_at = row.find("span", class_="timestamp").get_text(strip=True)
             comment_created_at = re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", comment_created_at).group(0)
+            comment_created_at = datetime.strptime(comment_created_at, "%Y-%m-%d %H:%M:%S")
 
             comment_like = row.find("div", class_="comment_content_symph")
             comment_like = comment_like.find("strong").text if comment_like else "0"
 
             comment_data = {
                 "content": comment_content,
-                "created_at": comment_created_at,
+                "created_at": comment_created_at.replace(tzinfo=timezone(timedelta(hours=9))),
                 "like": comment_like,
                 "dislike": None
             }
@@ -102,6 +103,7 @@ def detail(event, context):
             "content": soup.find("div", class_="post_article").get_text(separator="\n", strip=True),
             "view": hit,
             "created_at": post["created_at"],
+            "checked_at": post["checked-at"],
             "like": int(soup.find("a", class_="symph_count").find("strong").text if soup.find("a", class_="symph_count") else "0"),
             "dislike": None,
             "comment_count": int(soup.find("a", class_="post_reply").find("span").text if soup.find("a", class_="post_reply") else "0"),

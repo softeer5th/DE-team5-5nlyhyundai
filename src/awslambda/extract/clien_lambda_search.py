@@ -35,7 +35,8 @@ def search(event, context):
     end_date = event.get("end_date")
     
     if timestamp:
-        event_time = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f%z")
+        #event_time = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f%z")
+        event_time = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
     else:
         event_time = datetime.now(timezone.utc)  # Fallback
     kst_time = event_time + timedelta(hours=9)  # UTC+9 (KST)
@@ -103,8 +104,8 @@ def search(event, context):
                 "post_id": post["data-board-sn"],
                 "status": "CHANGED",
                 "comment_count": comment_cnt,
-                "created_at": created_at,
-                "checked_at": kst_time,
+                "created_at": created_at.replace(tzinfo=timezone(timedelta(hours=9))),
+                "checked_at": kst_time.replace(tzinfo=timezone(timedelta(hours=9))),
                 "view": hit,
                 "keyword": query
             }
