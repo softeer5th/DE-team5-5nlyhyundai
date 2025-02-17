@@ -94,7 +94,6 @@ def detail(event, context):
         except: hit = post["view"]
 
         post_data = {
-            "platform": "clien",
             "keywords": post["keywords"],
             "post_id": post["post_id"],
             "title": soup.find("h3", class_="post_subject").find_all("span")[0].text,
@@ -102,8 +101,8 @@ def detail(event, context):
             "content": soup.find("div", class_="post_article").get_text(separator="\n", strip=True),
             "view": hit,
             "created_at": post["created_at"],
-            "like": soup.find("a", class_="symph_count").find("strong").text if soup.find("a", class_="symph_count") else "0",
-            "dislike": "0",
+            "like": int(soup.find("a", class_="symph_count").find("strong").text if soup.find("a", class_="symph_count") else "0"),
+            "dislike": None,
             "comment_count": int(soup.find("a", class_="post_reply").find("span").text if soup.find("a", class_="post_reply") else "0"),
             "comment": all_comments
         }    
