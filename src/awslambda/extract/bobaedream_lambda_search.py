@@ -52,7 +52,6 @@ def extract_bobaedream(start_date, page_num, keyword):
         )
     # cookies = response.cookies
     # response_headers = response.headers
-    get_my_ip()
     if response.status_code != 200:
         print(f"확인 필요! status code: {response.status_code}")
         if response.status_code == 403:

@@ -542,7 +542,20 @@ def save_s3_bucket_by_parquet(
     keywords_comments = defaultdict(list)
 
     for post in data:
-        # 코멘트 분리
+        # 코멘트 제거
+        post.pop('id', None)
+        post.pop('status', None)
+        post['platform'] = platform
+        try:
+            post['like'] = int(post['like'])
+        except:
+            post['like'] = None
+        try:
+            post['dislike'] = int(post['dislike']) 
+        except:
+            post['dislike'] = None
+        post['comment_count'] = int(post['comment_count'])
+        post['view'] = int(post['view'])
         post_comments = post.pop('comment', [])
         keywords = post.get('keywords', ["no_keyword"])
         joined_keywords = "-".join((keywords))
@@ -550,6 +563,16 @@ def save_s3_bucket_by_parquet(
         # post_id를 기준으로 연결
         for comment in post_comments:
             comment['post_id'] = post['post_id']
+            comment['platform'] = platform
+            # 좋아요, 싫어요 수가 없는 경우 None으로 처리
+            try:
+                comment['like'] = int(comment['like'])
+            except:
+                comment['like'] = None            
+            try:
+                comment['dislike'] = int(comment['dislike'])
+            except:
+                comment['dislike'] = None
             keywords_comments[joined_keywords].append(comment)
 
     try:
