@@ -100,14 +100,16 @@ def lambda_handler(event, context):
             try:
                 comments_count = int(soup.select_one("span.gall_comment").text.strip().replace("댓글 ", ""))
             except:
-                comments_count = post['commen_count']
+                comments_count = post['comment_count']
 
             try:
                 post_id = post['post_id']
             except:
                 post_id = None
 
-            created_at = post["created_at"].strftime("%Y-%m-%d %H:%M:%S")
+            keywords = post['keywords']
+
+            created_at = post["created_at"]
 
             # 🔹 댓글 크롤링
             def _get_post_comments():
@@ -126,8 +128,10 @@ def lambda_handler(event, context):
                         comment_date = created_at
 
                     comments.append({
-                        "작성일자": comment_date,
-                        "내용": comment_text
+                        "created_at": comment_date,
+                        "content": comment_text,
+                        "like" : None,
+                        "dislike" : None
                     })
 
                 return comments
@@ -145,8 +149,9 @@ def lambda_handler(event, context):
                 "created_at": created_at,
                 "like": likes,
                 "dislike": dislikes,
-                "comments_count": comments_count,
-                "comment": comments
+                "comment_count": comments_count,
+                "comment": comments,
+                "keywords" : keywords
             })
 
             # 🔹 DB에서 상태 업데이트
@@ -163,7 +168,7 @@ def lambda_handler(event, context):
 
     # ✅ 크롤링 데이터 Parquet 저장 (S3 업로드)
     save_result = save_s3_bucket_by_parquet(
-        start_dt=datetime.now(),
+        checked_at_dt=posts_to_crawl[0]['checked_at'],
         platform="dcinside",
         data=crawled_posts
     )

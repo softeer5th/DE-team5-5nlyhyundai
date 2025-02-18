@@ -35,7 +35,8 @@ def search(event, context):
     end_date = event.get("end_date")
     
     if timestamp:
-        event_time = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f%z")
+        #event_time = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f%z")
+        event_time = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
     else:
         event_time = datetime.now(timezone.utc)  # Fallback
     kst_time = event_time + timedelta(hours=9)  # UTC+9 (KST)
@@ -59,8 +60,7 @@ def search(event, context):
     while isNextPage:
         full_url = BASIC_URL.format(query=urllib.parse.quote(query), page_num=p)
         headers = {
-            "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-            "User-Agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+            "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
         }
 
         REQUEST_REST = 1 + random.random()
@@ -70,7 +70,7 @@ def search(event, context):
             print("status code:", response.status_code)
             print("headers:", response.headers)
             print("body:", response.text)
-            continue
+            break
 
         soup = BeautifulSoup(response.content, "html.parser")
         if not soup.find("a", class_="board-nav-page active"):
@@ -82,11 +82,11 @@ def search(event, context):
             created_at_str = post.find("span", class_="timestamp").text
             created_at = datetime.strptime(created_at_str, "%Y-%m-%d %H:%M:%S")
             if created_at < start_dt:
-                continue
-
-            if (created_at > end_dt):
                 isNextPage = False
                 break
+
+            if (created_at > end_dt):
+                continue
             
             hit_raw = post.find("span", class_="hit").text.split(" ")
             hit = float(hit_raw[0])

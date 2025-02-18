@@ -30,9 +30,8 @@ def detail(event, context):
     all_post = []
 
     headers = {
-            "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-            "User-Agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
-        }
+        "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    }
     
     conn = get_db_connection()
     if conn is None:
@@ -77,26 +76,28 @@ def detail(event, context):
             comment_content = row.find("div", class_="comment_view").get_text(separator="\n", strip=True)
             comment_created_at = row.find("span", class_="timestamp").get_text(strip=True)
             comment_created_at = re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", comment_created_at).group(0)
+            comment_created_at = datetime.strptime(comment_created_at, "%Y-%m-%d %H:%M:%S")
 
             comment_like = row.find("div", class_="comment_content_symph")
             comment_like = comment_like.find("strong").text if comment_like else "0"
 
             comment_data = {
-                "content": comment_content,
                 "created_at": comment_created_at,
+                "content": comment_content,
                 "like": comment_like,
                 "dislike": None
             }
             all_comments.append(comment_data)
 
-        hit = soup.find("div", class_="post_author").find("span", class_="view_count").find("strong").text
-        try: hit = int(hit)
-        except: hit = post["view"]
+        try: 
+            hit = soup.find("div", class_="post_author").find("span", class_="view_count").find("strong").text
+            hit = int(hit)
+        except: 
+            hit = post["view"]
 
         post_data = {
-            "keywords": post["keywords"],
-            "post_id": post["post_id"],
             "title": soup.find("h3", class_="post_subject").find_all("span")[0].text,
+            "post_id": post["post_id"],
             "url": post_url,
             "content": soup.find("div", class_="post_article").get_text(separator="\n", strip=True),
             "view": hit,
@@ -104,6 +105,7 @@ def detail(event, context):
             "like": int(soup.find("a", class_="symph_count").find("strong").text if soup.find("a", class_="symph_count") else "0"),
             "dislike": None,
             "comment_count": int(soup.find("a", class_="post_reply").find("span").text if soup.find("a", class_="post_reply") else "0"),
+            "keywords": post["keywords"],
             "comment": all_comments
         }    
         all_post.append(post_data)
