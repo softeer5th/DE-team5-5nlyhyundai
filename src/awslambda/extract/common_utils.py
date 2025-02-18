@@ -732,7 +732,7 @@ def analyze_post_with_gpt(post):
 
     except Exception as e:
         print(f"❌ GPT API 호출 오류: {e}")
-        return post  # 오류 발생 시 원본 데이터 반환
+        raise e
 
 
 if __name__ == "__main__":
