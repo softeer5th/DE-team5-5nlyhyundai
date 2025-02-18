@@ -627,6 +627,7 @@ def save_s3_bucket_by_parquet(
         return True
         
     except Exception as e:
+        import traceback
         print(f"[ERROR] S3 업로드 실패: {str(e)}")
         traceback.print_exc()
         return None    
