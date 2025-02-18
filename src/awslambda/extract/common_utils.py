@@ -2,6 +2,9 @@ from collections import defaultdict
 from typing import Dict, List, Optional
 from datetime import datetime
 import traceback
+import json
+import re
+import requests
 
 import psycopg2
 import psycopg2.extras
@@ -9,7 +12,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import boto3
 import smart_open
-import requests
+import openai
 
 from settings import (
     DB_HOST,
@@ -18,6 +21,7 @@ from settings import (
     DB_PASSWORD,
     DB_PORT,
     VIEW_THRESHOLD,
+    OPENAI_API_KEY,
     S3_BUCKET,
 )
 
@@ -590,7 +594,8 @@ def save_s3_bucket_by_parquet(
         ('like', pa.int64()),
         ('dislike', pa.int64()),
         ('comment_count', pa.int64()),
-        ('keywords', pa.list_(pa.string()))
+        ('keywords', pa.list_(pa.string())),
+        ('sentiment', pa.string()),
     ])
 
     # 댓글 스키마 정의
@@ -600,6 +605,7 @@ def save_s3_bucket_by_parquet(
         ('like', pa.int64()),
         ('dislike', pa.int64()),
         ('post_id', pa.string()),
+        ('sentiment', pa.string()),
     ])
 
     try:
@@ -627,7 +633,6 @@ def save_s3_bucket_by_parquet(
         return True
         
     except Exception as e:
-        import traceback
         print(f"[ERROR] S3 업로드 실패: {str(e)}")
         traceback.print_exc()
         return None    
@@ -644,6 +649,90 @@ def get_my_ip():
             print(f"[INFO] AWS NAT Gateway 변환 이후 IP: {response.text.strip()}")
         except:
             return "Failed to get IP address"
+
+openai.api_key = OPENAI_API_KEY
+
+def extract_json_from_response(response_text):
+    """
+    GPT 응답에서 JSON 부분만 추출하고 정리하는 함수.
+    """
+    try:
+        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+        if json_match:
+            clean_json = json_match.group(0)
+            return json.loads(clean_json)
+        else:
+            print(f"⚠️ JSON 패턴을 찾을 수 없음: {response_text}")
+            return None
+    except json.JSONDecodeError as e:
+        print(f"❌ JSON 디코딩 실패: {e}\nGPT 응답: {response_text}")
+        return None
+
+def analyze_post_with_gpt(post):
+    """
+    GPT API를 이용해 게시글 및 댓글의 감정 분석을 수행하고 원본 데이터를 업데이트하는 함수.
+    """
+    try:
+        title = post.get("title", "제목 없음")
+        content = post.get("content", "본문 없음")
+        comments = post.get("comment", [])
+
+        comment_texts = "\n".join([f"- {c['content']}" for c in comments])
+
+        prompt = f"""
+        아래 게시글 내용을 분석하여 감정 분석(sentiment analysis)을 수행하세요.
+
+        제목: {title}
+        본문: {content}
+        댓글:
+        {comment_texts}
+
+        분석할 내용:
+        1. **게시글 감정 분석**: 게시글의 감정을 title와 content를 이용해서 '벤츠'라는 단어를 기준으로 '긍정/부정/중립' 중 하나로 판단하세요.
+        2. **댓글 감정 분석**: 각 댓글의 감정을 title, content, comment_texts와 게시글 감정을 참고하여 '벤츠'라는 단어를 기준으로 '긍정/부정/중립'으로 분류하세요.
+
+        **반드시 JSON 형식으로 답변하세요.**
+        JSON 형식:
+        {{
+            "게시글 감정": "positive/negative/neutral",
+            "comment_sentiments": [
+                {{"내용": "댓글1 내용", "감정": "positive/negative/neutral"}},
+                {{"내용": "댓글2 내용", "감정": "positive/negative/neutral"}}
+            ]
+        }}
+        """
+
+        response = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "system", "content": "너는 JSON 응답을 제공하는 AI야."},
+                      {"role": "user", "content": prompt}],
+            temperature=0.7,
+        )
+
+        gpt_output = response.choices[0].message.content
+        print(f"📌 GPT 응답 내용: {gpt_output}")
+
+        if not gpt_output:
+            raise ValueError("GPT 응답이 비어 있습니다.")
+
+        analysis_result = extract_json_from_response(gpt_output)
+        if not analysis_result:
+            print("❌ 감정 분석 실패: JSON 응답을 파싱할 수 없습니다.")
+            return post
+
+        # 게시글 감정 분석 결과 추가
+        post["sentiment"] = analysis_result.get("게시글 감정", "neutral")
+
+        # 댓글 감정 분석 결과 추가
+        if "comment_sentiments" in analysis_result:
+            for com, gpts in zip(post["comment"], analysis_result["comment_sentiments"]):
+                com["sentiment"] = gpts["감정"]
+
+        return post
+
+    except Exception as e:
+        print(f"❌ GPT API 호출 오류: {e}")
+        return post  # 오류 발생 시 원본 데이터 반환
 
 
 if __name__ == "__main__":

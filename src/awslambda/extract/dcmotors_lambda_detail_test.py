@@ -8,7 +8,8 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from tempfile import mkdtemp
 from selenium.webdriver.common.by import By
-from common_utils import get_db_connection, get_details_to_parse, upsert_post_tracking_data, save_s3_bucket_by_parquet, update_status_changed, update_changed_stats
+from common_utils import get_db_connection, get_details_to_parse, upsert_post_tracking_data, save_s3_bucket_by_parquet, update_status_changed, update_changed_stats, analyze_post_with_gpt
+
 
 def lambda_handler(event, context):
     # ✅ 웹드라이버 옵션 설정 부분을 다음과 같이 수정
@@ -158,8 +159,7 @@ def lambda_handler(event, context):
             comments = _get_post_comments()
 
             # 🔹 데이터 저장을 위해 Parquet용 리스트에 추가
-            crawled_posts.append({
-                "platform": "DC",
+            temp_post = {
                 "title": title,
                 "post_id": post_id,
                 "url": url,
@@ -171,7 +171,9 @@ def lambda_handler(event, context):
                 "comment_count": comments_count,
                 "comment": comments,
                 "keywords" : keywords
-            })
+            }
+            final_post = analyze_post_with_gpt(temp_post)
+            crawled_posts.append(final_post)
 
             # 🔹 DB에서 상태 업데이트
             update_result = update_changed_stats(conn, table_name, url, comments_count, views, created_at)
