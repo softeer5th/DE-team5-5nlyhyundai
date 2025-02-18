@@ -160,7 +160,6 @@ def lambda_handler(event, context):
     start_date, 
     end_date는 선택.
     """
-    # python -m bobaedream.bobaedream_exec 로 실행
     # 이게 크롤링한 시간.
     checked_at_str = event.get('checked_at')
     # ISO 8601 형식 → UTC 기준

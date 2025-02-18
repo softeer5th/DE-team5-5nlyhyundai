@@ -174,7 +174,7 @@ def parse_detail() -> Optional[List[Dict]]:
                         continue
                     try:
                         # comment_name = comment_meta[1].text
-                        comment_date = comment_meta[3].text
+                        comment_date = datetime.strptime(comment_meta[3].text, '%y.%m.%d %H:%M')
                         comment_content = comment.find('dd').text.strip()
                         comment_like_dislike = comment.find('div', class_='updownbox').find_all('dd')
                         comment_like = comment_like_dislike[0].text.replace('추천 ', '') 
@@ -189,7 +189,8 @@ def parse_detail() -> Optional[List[Dict]]:
                         print(f"[ERROR] 댓글 파싱 실패: {e}")
                         continue        
             payloads.append({
-                'platform': post['platform'],
+                'checked_at': post['checked_at'],
+                'platform': 'bobaedream',
                 'title': post['title'],
                 'post_id': post['post_id'],
                 'url': post['url'],
@@ -199,7 +200,7 @@ def parse_detail() -> Optional[List[Dict]]:
                 'like': post['like'],
                 'dislike': post['dislike'],
                 'comment_count': post['comment_count'],
-                'keyword': post['keywords'],
+                'keywords': post['keywords'],
                 'comment': comment_data,
                 'status': 'UNCHANGED',
             })
@@ -235,8 +236,9 @@ def lambda_handler(event, context):
             'body': '[INFO] 업데이트할 데이터가 없습니다.'
         }
     try:
+        checked_at_dt = details_data[0]['checked_at']
         save_s3_bucket_by_parquet(
-            checked_at_dt=details_data[0]['checked_at'],
+            checked_at_dt=checked_at_dt,
             platform='bobaedream', 
             data=details_data
         )
