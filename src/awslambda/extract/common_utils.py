@@ -563,7 +563,6 @@ def save_s3_bucket_by_parquet(
         # post_id를 기준으로 연결
         for comment in post_comments:
             comment['post_id'] = post['post_id']
-            comment['platform'] = platform
             # 좋아요, 싫어요 수가 없는 경우 None으로 처리
             try:
                 comment['like'] = int(comment['like'])
