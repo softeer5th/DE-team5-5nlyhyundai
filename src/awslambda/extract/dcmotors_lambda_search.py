@@ -47,7 +47,7 @@ def lambda_handler(event, context):
     # ISO 8601 형식 → UTC 기준
     if checked_at_str:
         event_time = datetime.fromisoformat(checked_at_str.replace("Z", "+00:00"))
-    else:
+    else:  
         event_time = datetime.now(timezone.utc)  # Fallback
     # UTC 시간에 9시간을 더해 KST 시간으로 변환
     checked_at = event_time + timedelta(hours=9)  # UTC+9 (KST)
