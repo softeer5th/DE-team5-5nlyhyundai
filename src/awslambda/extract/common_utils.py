@@ -1,6 +1,7 @@
 from collections import defaultdict
 from typing import Dict, List, Optional
 from datetime import datetime
+import traceback
 
 import psycopg2
 import psycopg2.extras
@@ -238,6 +239,7 @@ def upsert_post_tracking_data(
             return True
     except Exception as e:
         print(f"[ERROR] DB 업데이트 에러: {e}")
+        traceback.print_exc()
         return None
 
 def get_details_to_parse(
@@ -449,6 +451,7 @@ def update_changed_stats(
             return True
         except Exception as e:
             print(f"[ERROR] comment_count, view 수정 에러: {e}")
+            traceback.print_exc()
             return None
 
 def log_crawling_metadata(
@@ -485,6 +488,7 @@ def log_crawling_metadata(
             return True
     except Exception as e:
         print(f"[ERROR] DB 메타데이터 로깅 에러: {e}")
+        traceback.print_exc()
         return None
     
 
@@ -546,6 +550,7 @@ def save_s3_bucket_by_parquet(
         post.pop('id', None)
         post.pop('status', None)
         post.pop('checked_at', None)
+        post['platform'] = platform
         try:
             post['like'] = int(post['like'])
         except:
@@ -573,12 +578,35 @@ def save_s3_bucket_by_parquet(
             except:
                 comment['dislike'] = None
             keywords_comments[joined_keywords].append(comment)
+   # 게시물 스키마 정의
+    posts_schema = pa.schema([
+        ('platform', pa.string()),
+        ('title', pa.string()),
+        ('post_id', pa.string()),
+        ('url', pa.string()),
+        ('content', pa.string()),
+        ('view', pa.int64()),
+        ('created_at', pa.timestamp('s')),  # 'ns' 대신 's' 사용
+        ('like', pa.int64()),
+        ('dislike', pa.int64()),
+        ('comment_count', pa.int64()),
+        ('keywords', pa.list_(pa.string()))
+    ])
+
+    # 댓글 스키마 정의
+    comments_schema = pa.schema([
+        ('created_at', pa.timestamp('s')),  # 'ns' 대신 's' 사용
+        ('content', pa.string()),
+        ('like', pa.int64()),
+        ('dislike', pa.int64()),
+        ('post_id', pa.string()),
+    ])
 
     try:
         for keyword, posts in keywords_posts.items():
             # Parquet로 변환
-            posts_table = pa.Table.from_pylist(posts)
-            comments_table = pa.Table.from_pylist(keywords_comments[keyword])
+            posts_table = pa.Table.from_pylist(posts, schema=posts_schema)
+            comments_table = pa.Table.from_pylist(keywords_comments[keyword], schema=comments_schema)
 
             # S3 업로드 경로 설정
             s3_posts_key = f"{date}/{hour}/{minute}/{keyword}/{platform}_posts.parquet"
@@ -602,7 +630,7 @@ def save_s3_bucket_by_parquet(
         import traceback
         print(f"[ERROR] S3 업로드 실패: {str(e)}")
         traceback.print_exc()
-        return None 
+        return None    
 
 def get_my_ip():
     try:
