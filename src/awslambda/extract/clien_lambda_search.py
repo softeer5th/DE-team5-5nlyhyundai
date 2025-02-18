@@ -104,8 +104,8 @@ def search(event, context):
                 "post_id": post["data-board-sn"],
                 "status": "CHANGED",
                 "comment_count": comment_cnt,
-                "created_at": created_at.replace(tzinfo=timezone(timedelta(hours=9))),
-                "checked_at": kst_time.replace(tzinfo=timezone(timedelta(hours=9))),
+                "created_at": created_at,
+                "checked_at": kst_time,
                 "view": hit,
                 "keyword": query
             }

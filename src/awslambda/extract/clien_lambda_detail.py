@@ -82,7 +82,7 @@ def detail(event, context):
             comment_like = comment_like.find("strong").text if comment_like else "0"
 
             comment_data = {
-                "created_at": comment_created_at.replace(tzinfo=timezone(timedelta(hours=9))),
+                "created_at": comment_created_at,
                 "content": comment_content,
                 "like": comment_like,
                 "dislike": None
