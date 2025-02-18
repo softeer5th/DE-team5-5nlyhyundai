@@ -109,7 +109,7 @@ def lambda_handler(event, context):
 
             keywords = post['keywords']
 
-            created_at = post["created_at"].strftime("%Y-%m-%d %H:%M:%S")
+            created_at = post["created_at"]
 
             # 🔹 댓글 크롤링
             def _get_post_comments():
