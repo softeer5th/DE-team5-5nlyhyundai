@@ -11,36 +11,46 @@ from selenium.webdriver.common.by import By
 from common_utils import get_db_connection, get_details_to_parse, upsert_post_tracking_data, save_s3_bucket_by_parquet, update_status_changed, update_changed_stats
 
 def lambda_handler(event, context):
-    # ✅ 웹드라이버 옵션 설정
+    # ✅ 웹드라이버 옵션 설정 부분을 다음과 같이 수정
     chrome_options = ChromeOptions()
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--disable-setuid-sandbox")
     chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--disable-dev-tools")
-    chrome_options.add_argument("--no-zygote")
-    chrome_options.add_argument("--single-process")
     chrome_options.add_argument(f"--user-data-dir={mkdtemp()}")
-    chrome_options.add_argument(f"--data-path={mkdtemp()}")
-    chrome_options.add_argument(f"--disk-cache-dir={mkdtemp()}")
-    chrome_options.add_argument("--remote-debugging-pipe")
-    chrome_options.add_argument("--verbose")
-    chrome_options.add_argument("--log-path=/tmp")
-    chrome_options.binary_location = "/opt/chrome/chrome-linux64/chrome"
+    chrome_options.add_argument("--remote-debugging-port=9222")  # debugging port 추가
+
+    # Mac 환경 특화 설정 추가
+    chrome_options.add_argument("--disable-notifications")
+    chrome_options.add_argument("--ignore-certificate-errors")
+    chrome_options.add_argument("--disable-popup-blocking")
+
     prefs = {
-        "profile.managed_default_content_settings.images": 2,  # 이미지 비활성화
-        "profile.managed_default_content_settings.ads": 2,     # 광고 비활성화
-        "profile.managed_default_content_settings.media": 2    # 비디오, 오디오 비활성화
+        "profile.managed_default_content_settings.images": 2,
+        "profile.managed_default_content_settings.ads": 2,
+        "profile.managed_default_content_settings.media": 2,
+        "profile.default_content_setting_values.notifications": 2,
+        "profile.default_content_setting_values.plugins": 2
     }
     chrome_options.add_experimental_option("prefs", prefs)
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option("useAutomationExtension", False)
 
-    # ✅ Docker에 미리 설치된 Chrome과 ChromeDriver 경로 설정
-    chrome_options.binary_location = "/opt/chrome/chrome-linux64/chrome"
-    service = Service("/opt/chrome-driver/chromedriver-linux64/chromedriver")
-
-    # ✅ 웹드라이버 실행
-    print("🚀 웹드라이버 실행 중...")
-    driver = Chrome(service=service, options=chrome_options)
+    # ✅ 웹드라이버 실행 부분을 다음과 같이 수정
+    try:
+        print("🚀 웹드라이버 실행 준비...")
+        service = Service("/opt/homebrew/bin/chromedriver")
+        driver = Chrome(service=service, options=chrome_options)
+        print("✅ 웹드라이버 실행 성공")
+        
+        # 페이지 로드 타임아웃 설정
+        driver.set_page_load_timeout(30)
+        
+    except Exception as e:
+        print(f"❌ 웹드라이버 실행 실패: {str(e)}")
+        raise e
 
     # ✅ DB 연결
     conn = get_db_connection()
@@ -121,16 +131,18 @@ def lambda_handler(event, context):
                         comment_text = el.text.strip()
                     except:
                         comment_text = "댓글 없음"
+                        
 
                     try:
                         comment_date_str = el.find_parent("li").select_one("div.cmt_info span.date_time").text.strip()
-                        if len(comment_date_str) == 11:  # 예: "08-06 11:04"
+                        if len(comment_date_str) == 14:  # 예: "08-06 11:04:05"
                             comment_date = datetime.strptime(comment_date_str, "%m-%d %H:%M")
                             comment_date = comment_date.replace(year=created_at.year)  # 연도 추가
-
-                        # ✅ 날짜 문자열이 "YYYY-MM-DD HH:MM" 형식인 경우
-                        elif len(comment_date_str) == 16:  # 예: "2024-08-06 11:04"
+                        # :흰색_확인_표시: 날짜 문자열이 "YYYY-MM-DD HH:MM" 형식인 경우
+                        elif len(comment_date_str) == 19:  # 예: "2024-08-06 11:04:05"
                             comment_date = datetime.strptime(comment_date_str, "%Y-%m-%d %H:%M")
+                        else:
+                            print(f"❌ 날짜 형식 오류: {comment_date_str}")
                     except:
                         comment_date = created_at
 
