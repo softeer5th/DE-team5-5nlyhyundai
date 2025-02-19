@@ -175,7 +175,7 @@ def lambda_handler(event, context):
     # 게시글 시작 날짜
     start_date = event.get('start_date')
     if start_date is None:
-        start_dt = checked_at - timedelta(days=14)
+        start_dt = checked_at - timedelta(hours=6)
     else:
         start_dt = datetime.strptime(start_date, '%Y-%m-%d')
         start_dt = start_dt.replace(tzinfo=timezone.utc)  # UTC로 변환
@@ -183,7 +183,7 @@ def lambda_handler(event, context):
     # 게시글 종료 날짜
     end_date = event.get('end_date')
     if end_date is None:
-        end_dt = checked_at + timedelta(days=1)
+        end_dt = checked_at + timedelta(days=0)
     else:
         end_dt = datetime.strptime(end_date, '%Y-%m-%d')
         end_dt = end_dt.replace(tzinfo=timezone.utc)

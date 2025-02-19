@@ -25,8 +25,8 @@ BASIC_URL = "https://gall.dcinside.com/board/lists/?id=car_new1&page={page_num}&
 DCINSIDE_URL = "https://gall.dcinside.com"
 
 # ✅ 직접 설정할 변수들
-search_positions = [-9645863, -9635863, -9625863]  # 🔹 크롤링할 검색 포지션 리스트
-max_pages = 15  # 🔹 각 search_pos에서 최대 몇 개의 페이지를 탐색할지 설정
+search_positions = [-96495863, -9685863, -9675863, -9665863, -9655863, -9645863, -9635863, -9625863, -9615863]  # 🔹 크롤링할 검색 포지션 리스트
+max_pages = 8  # 🔹 각 search_pos에서 최대 몇 개의 페이지를 탐색할지 설정
 table_name = "probe_dcmotors"  # 🔹 사용할 테이블
 keyword_list = ["벤츠"]  # 🔹 검색할 키워드 리스트
 
@@ -57,14 +57,14 @@ def lambda_handler(event, context):
     # 게시글 시작 날짜
     start_date = event.get('start_date')
     if start_date is None:
-        start_dt = checked_at - timedelta(days=14)
+        start_dt = checked_at - timedelta(hours=6)
     else:
         start_dt = datetime.strptime(start_date, '%Y-%m-%d')    
     
     # 게시글 종료 날짜
     end_date = event.get('end_date')
     if end_date is None:
-        end_dt = checked_at + timedelta(days=1)
+        end_dt = checked_at + timedelta(days=0)
     else:
         end_dt = datetime.strptime(end_date, '%Y-%m-%d')
     
