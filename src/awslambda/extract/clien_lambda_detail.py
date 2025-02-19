@@ -25,7 +25,7 @@ BASIC_URL = "https://www.clien.net/service/search?q={query}&sort=recency&p={page
 CLIEN_URL = "https://www.clien.net"
 
 SEARCH_TABLE = "probe_clien"
-EXECUTOR_MAX = 5
+EXECUTOR_MAX = 20
 
 # 멀티스레드를 위한 설정
 analysis_executor = ThreadPoolExecutor(max_workers=EXECUTOR_MAX)
