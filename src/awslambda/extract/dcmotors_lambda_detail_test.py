@@ -19,7 +19,7 @@ from common_utils import (
 )
 
 # 멀티스레드를 위한 설정
-analysis_executor = ThreadPoolExecutor(max_workers=5)
+analysis_executor = ThreadPoolExecutor(max_workers=20)
 
 def setup_webdriver():
     """웹드라이버 설정 및 실행"""
@@ -30,8 +30,15 @@ def setup_webdriver():
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--disable-setuid-sandbox")
     chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--disable-dev-tools")
+    chrome_options.add_argument("--no-zygote")
+    chrome_options.add_argument("--single-process")
     chrome_options.add_argument(f"--user-data-dir={mkdtemp()}")
-    chrome_options.add_argument("--remote-debugging-port=9222")
+    chrome_options.add_argument(f"--data-path={mkdtemp()}")
+    chrome_options.add_argument(f"--user-data-dir={mkdtemp()}")
+    chrome_options.add_argument("--remote-debugging-pipe")
+    chrome_options.add_argument("--verbose")
+    chrome_options.add_argument("--log-path=/tmp")
 
     # Mac 환경 특화 설정 추가
     chrome_options.add_argument("--disable-notifications")
@@ -50,7 +57,8 @@ def setup_webdriver():
     chrome_options.add_experimental_option("useAutomationExtension", False)
 
     try:
-        service = Service("/opt/homebrew/bin/chromedriver")
+        chrome_options.binary_location = "/opt/chrome/chrome-linux64/chrome"
+        service = Service("/opt/chrome-driver/chromedriver-linux64/chromedriver")
         driver = Chrome(service=service, options=chrome_options)
         driver.set_page_load_timeout(30)
         return driver
@@ -170,7 +178,7 @@ def lambda_handler(event, context):
     print(f"🔍 크롤링할 게시글 수: {len(posts_to_crawl)}")
 
     current_batch = []
-    BATCH_SIZE = min(10, len(posts_to_crawl))
+    BATCH_SIZE = min(50, len(posts_to_crawl))
     crawled_post = []
 
     # ✅ 크롤링 → 감성 분석 즉시 실행 (순차 처리)
