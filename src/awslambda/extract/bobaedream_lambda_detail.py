@@ -29,7 +29,7 @@ from common_utils import (
 )
 
 # 멀티스레드를 위한 설정
-analysis_executor = ThreadPoolExecutor(max_workers=5)
+analysis_executor = ThreadPoolExecutor(max_workers=20)
 
 linebreak_ptrn = re.compile(r'(\n){2,}')  # 줄바꿈 문자 매칭
 
@@ -131,7 +131,7 @@ def parse_detail() -> Optional[List[Dict]]:
         return
     payloads = []
     current_batch = []
-    BATCH_SIZE = min(10, len(details))
+    BATCH_SIZE = min(50, len(details))
 
     for post in details:
         try:
