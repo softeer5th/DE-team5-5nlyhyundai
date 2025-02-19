@@ -21,7 +21,7 @@ from common_utils import (
 BASIC_URL = "https://www.clien.net/service/search?q={query}&sort=recency&p={page_num}&boardCd=&isBoard=false"
 CLIEN_URL = "https://www.clien.net"
 
-SEARCH_TERM = timedelta(days=14)
+SEARCH_TERM = timedelta(hours=14)
 
 SEARCH_TABLE = "probe_clien"
 
@@ -53,6 +53,11 @@ def search(event, context):
 
 
     conn = get_db_connection()
+    if conn is None:
+        return {
+            "status_code": 500,
+            "body": "[ERROR] SEARCH / DB 연결 실패"
+        }
 
     isNextPage = True
     p = 0
