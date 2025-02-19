@@ -558,6 +558,7 @@ def save_s3_bucket_by_parquet(
         post['view'] = int(post['view'])
         post_comments = post.pop('comment', [])
         keywords = post.get('keywords', ["no_keyword"])
+        post['keywords'] = "|".join(keywords).replace(" ", "_")
         joined_keywords = "-".join((keywords))
         keywords_posts[joined_keywords].append(post)
         # post_id를 기준으로 연결
@@ -574,8 +575,34 @@ def save_s3_bucket_by_parquet(
             except:
                 comment['dislike'] = None
             keywords_comments[joined_keywords].append(comment)
+   # 게시물 스키마 정의
+    posts_schema = pa.schema([
+        ('platform', pa.string()),
+        ('title', pa.string()),
+        ('post_id', pa.string()),
+        ('url', pa.string()),
+        ('content', pa.string()),
+        ('view', pa.int64()),
+        ('created_at', pa.timestamp('s')),  # 'ns' 대신 's' 사용
+        ('like', pa.int64()),
+        ('dislike', pa.int64()),
+        ('comment_count', pa.int64()),
+        ('keywords', pa.string()),
+        ('sentiment', pa.string()),
+    ])
+
+    # 댓글 스키마 정의
+    comments_schema = pa.schema([
+        ('created_at', pa.timestamp('s')),  # 'ns' 대신 's' 사용
+        ('content', pa.string()),
+        ('like', pa.int64()),
+        ('dislike', pa.int64()),
+        ('post_id', pa.string()),
+        ('sentiment', pa.string()),
+    ])
 
     try:
+        conn = get_db_connection()
         for keyword, posts in keywords_posts.items():
             # Parquet로 변환
             posts_table = pa.Table.from_pylist(posts)
@@ -594,7 +621,6 @@ def save_s3_bucket_by_parquet(
                 pq.write_table(comments_table, s3_file, compression='snappy')
             
             print(f"[INFO] S3 업로드 완료 (키워드: {keyword}): {s3_posts_key}, {s3_comments_key}")
-            conn = get_db_connection()
             log_crawling_metadata(conn, checked_at_dt, keyword, platform)
 
         return True

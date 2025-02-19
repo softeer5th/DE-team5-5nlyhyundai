@@ -81,18 +81,18 @@ def parse_detail() -> Optional[List[Dict]]:
     conn = get_db_connection()
     if conn is None:
         print("[ERROR] DB 연결 실패")
-        return 
+        return 500
     
     # DB에서 상세 정보를 가져올 게시물 목록
     table_name = 'probe_bobae'
     details = get_details_to_parse(conn, table_name)
     if details is None:
         print("[ERROR] DB 조회 실패")
-        return
+        return 500
     
     if details == []:
         print("[INFO] 파싱할 게시물이 없습니다.")
-        return
+        return 204
     payloads = []
     for post in details:
         try:
@@ -115,7 +115,7 @@ def parse_detail() -> Optional[List[Dict]]:
                 if response.status_code == 403:
                     print(f"IP 차단됨! {response.status_code}")
                     update_status_banned(conn, table_name, post['url'])
-                return None
+                return 403, payloads
                     
             soup = BeautifulSoup(response.text, 'html.parser', from_encoding='utf-8')
             # 댓글이 없는 경우를 위한 처리
@@ -229,28 +229,44 @@ def lambda_handler(event, context):
     get_my_ip()
     table_name = 'probe_bobae'
     details_data = parse_detail()
-    if not details_data:
+    if details_data == 500:
         return {
-            'statusCode': 201,
-            'body': '[INFO] 업데이트할 데이터가 없습니다.'
+            "status_code": 500,
+            "body": "[ERROR] DB 연결 실패"
+        }
+    if details_data == 204:
+        return {
+            "status_code": 204,
+            "body": "[INFO] 파싱할 데이터가 없습니다."
+        }
+    elif details_data == 403:
+        return {
+            "status_code": 403,
+            "body": "[WARNING] 보배드림 IP 차단됨!"
+        }
+    elif details_data == []:
+        return {
+            "status_code": 201,
+            "body": "[INFO] 업데이트할 데이터가 없습니다."
         }
     try:
+        checked_at_dt = details_data[0]["checked_at"]
         save_s3_bucket_by_parquet(
-            checked_at_dt=details_data[0]['checked_at'],
-            platform='bobaedream', 
+            checked_at_dt=checked_at_dt,
+            platform="bobaedream", 
             data=details_data
         )
         return {
-            'statusCode': 200,
-            'body': f'[INFO] S3 저장 완료: {len(details_data)} 건'
+            "status_code": 200,
+            "body": f"[INFO] S3 저장 완료: {len(details_data)} 건"
         }
     except Exception as e:
         print(f"[ERROR] S3 저장 실패: {e}")
         conn = get_db_connection()
         if details_data:
             for detail in details_data:
-                update_status_failed(conn, table_name, detail['url'])
+                update_status_failed(conn, table_name, detail["url"])
         return {
-            'statusCode': 500,
-            'body': '[ERROR] S3 저장 실패'
+            "status_code": 500,
+            "body": "[ERROR] S3 저장 실패"
         }
