@@ -70,7 +70,10 @@ def search(event, context):
             print("status code:", response.status_code)
             print("headers:", response.headers)
             print("body:", response.text)
-            raise Exception("clien search crawler: search page banned")
+            return  {
+                "status_code": 403, 
+                "body": "[WARNING] SEACH/clien 연결 실패"
+            }
             break
 
         soup = BeautifulSoup(response.content, "html.parser")

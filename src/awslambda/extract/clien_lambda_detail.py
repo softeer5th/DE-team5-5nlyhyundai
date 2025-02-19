@@ -47,18 +47,27 @@ def detail(event, context):
     conn = get_db_connection()
     if conn is None:
         print("[ERROR] DB 연결 실패")
-        return 
+        return  {
+            "status_code": 500, 
+            "body": "[ERROR] DETAIL/clien DB 연결 실패"
+        }
     
     # DB에서 상세 정보를 가져올 게시물 목록
     table_name = 'probe_clien'
     details = get_details_to_parse(conn, table_name)
     if details is None:
         print("[ERROR] DB 조회 실패")
-        return
+        return  {
+            "status_code": 500, 
+            "body": "[ERROR] DETAIL/clien DB 조회 실패"
+        }
     
     if details == []:
         print("[INFO] 파싱할 게시물이 없습니다.")
-        return
+        return  {
+            "status_code": 204, 
+            "body": "[INFO] DETAIL/clien 파싱 할 데이터가 없습니다."
+        }
 
     timestamp = details[0]["checked_at"]
     
@@ -72,6 +81,21 @@ def detail(event, context):
             print("headers:", response.headers)
             print("body:", response.text)
             update_status_banned(conn, table_name, post['url'])
+            for future in as_completed(futures):
+                try:
+                    post_data = future.result()
+                    if post_data:
+                        all_post.append(post_data)
+                        update_changed_stats(conn, table_name, post_data['url'], post_data['comment_count'], post_data['view'], post_data['created_at'])
+                        print(f"{post_data['url']} - Done!")
+                except Exception as e:
+                    print(f"Error processing post: {e}")
+            save_s3_bucket_by_parquet(timestamp, platform='clien', data=all_post)
+            return  {
+                "status_code": 403, 
+                "body": "[WARNING] DETAIL/clien IP 차단"
+            }
+
             continue
         
         update_status_unchanged(conn, table_name, post['url'])
@@ -140,14 +164,27 @@ def detail(event, context):
             print("gpt timeout! get next page...")
             continue
     for future in as_completed(futures):
-            try:
-                post_data = future.result()
-                if post_data:
-                    all_post.append(post_data)
-                    update_changed_stats(conn, table_name, post_data['url'], post_data['comment_count'], post_data['view'], post_data['created_at'])
-                    print(f"{post_data['url']} - Done!")
-            except Exception as e:
-                print(f"Error processing post: {e}")
-    save_s3_bucket_by_parquet(timestamp, platform='clien', data=all_post)
-
+        try:
+            post_data = future.result()
+            if post_data:
+                all_post.append(post_data)
+                update_changed_stats(conn, table_name, post_data['url'], post_data['comment_count'], post_data['view'], post_data['created_at'])
+                print(f"{post_data['url']} - Done!")
+        except Exception as e:
+            print(f"Error processing post: {e}")
+    if len(all_post) == 0:
+        return {
+            "status_code": 201,
+            "body": "[INFO] DETAIL/clien 업데이트할 데이터가 없습니다."
+        }
+    save_res = save_s3_bucket_by_parquet(timestamp, platform='clien', data=all_post)
+    if save_res is None:
+        return {
+            "status_code": 500,
+            "body": "[ERROR] DETAIL / S3 저장 실패"
+        }
+    return {
+        "status_code": 200,
+        "body": "[INFO] DETAIL / S3 저장 성공"
+    }
     
