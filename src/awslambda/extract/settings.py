@@ -15,6 +15,7 @@ DB_PASSWORD = os.getenv("DB_PASSWORD")
 DB_PORT = os.getenv("DB_PORT")
 VIEW_THRESHOLD = int(os.getenv("VIEW_THRESHOLD"))
 S3_BUCKET = os.getenv("S3_BUCKET")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 
 print("=== 환경변수 확인 ===")

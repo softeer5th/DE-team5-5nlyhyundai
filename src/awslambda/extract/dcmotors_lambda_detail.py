@@ -123,7 +123,15 @@ def lambda_handler(event, context):
                         comment_text = "댓글 없음"
 
                     try:
-                        comment_date = el.find_parent("li").select_one("div.cmt_info span.date_time").text.strip()
+                        comment_date_str = el.find_parent("li").select_one("div.cmt_info span.date_time").text.strip()
+                        if len(comment_date_str) == 14:  # 예: "08-06 11:04:05"
+                            comment_date = datetime.strptime(comment_date_str, "%m-%d %H:%M")
+                            comment_date = comment_date.replace(year=created_at.year)  # 연도 추가
+                        # :흰색_확인_표시: 날짜 문자열이 "YYYY-MM-DD HH:MM" 형식인 경우
+                        elif len(comment_date_str) == 19:  # 예: "2024-08-06 11:04:05"
+                            comment_date = datetime.strptime(comment_date_str, "%Y-%m-%d %H:%M")
+                        else:
+                            print(f":x: 날짜 형식 오류: {comment_date_str}")
                     except:
                         comment_date = created_at
 

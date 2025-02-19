@@ -3,6 +3,7 @@ from typing import List, Dict, Optional
 from datetime import datetime, timezone, timedelta
 import time
 import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from bs4 import BeautifulSoup
@@ -23,9 +24,44 @@ from common_utils import (
     update_status_changed,
     update_status_unchanged,
     update_changed_stats,
-    get_my_ip
+    get_my_ip,
+    analyze_post_with_gpt,
 )
+
+# 멀티스레드를 위한 설정
+analysis_executor = ThreadPoolExecutor(max_workers=20)
+
 linebreak_ptrn = re.compile(r'(\n){2,}')  # 줄바꿈 문자 매칭
+
+def analyze_post(payload):
+    """크롤링된 데이터를 감성 분석 수행"""
+    try:
+        print(f"🎭 감성 분석 시작: {payload['url']}")
+        analyzed_post = analyze_post_with_gpt(payload)
+        print(f"✅ 감성 분석 완료: {payload['url']}")
+        return analyzed_post
+    except Exception as e:
+        print(f"❌ 감성 분석 오류: {e}")
+        payload['sentiment'] = None
+        for comment in payload['comment']:
+            comment['sentiment'] = None
+        return payload
+    
+def process_batch(futures: List) -> List[Dict]:
+    """배치 단위로 감성 분석 처리"""
+    results = []
+       
+    # 완료된 작업들의 결과를 수집
+    for future in as_completed(futures):
+        try:
+            result = future.result()
+            if result:
+                results.append(result)
+        except Exception as e:
+            print(f"Error processing batch item: {e}")
+    
+    return results
+
 
 def parse_post_meta(post, post_meta):
     # 포스팅 메타데이터 추가
@@ -94,6 +130,9 @@ def parse_detail() -> Optional[List[Dict]]:
         print("[INFO] 파싱할 게시물이 없습니다.")
         return 204
     payloads = []
+    current_batch = []
+    BATCH_SIZE = min(50, len(details))
+
     for post in details:
         try:
             post_url = post['url']
@@ -174,7 +213,7 @@ def parse_detail() -> Optional[List[Dict]]:
                         continue
                     try:
                         # comment_name = comment_meta[1].text
-                        comment_date = comment_meta[3].text
+                        comment_date = datetime.strptime(comment_meta[3].text, '%y.%m.%d %H:%M')
                         comment_content = comment.find('dd').text.strip()
                         comment_like_dislike = comment.find('div', class_='updownbox').find_all('dd')
                         comment_like = comment_like_dislike[0].text.replace('추천 ', '') 
@@ -187,9 +226,10 @@ def parse_detail() -> Optional[List[Dict]]:
                         })
                     except Exception as e:
                         print(f"[ERROR] 댓글 파싱 실패: {e}")
-                        continue        
-            payloads.append({
-                'platform': post['platform'],
+                        continue
+            payload = {
+                'checked_at': post['checked_at'],
+                'platform': 'bobaedream',
                 'title': post['title'],
                 'post_id': post['post_id'],
                 'url': post['url'],
@@ -199,13 +239,24 @@ def parse_detail() -> Optional[List[Dict]]:
                 'like': post['like'],
                 'dislike': post['dislike'],
                 'comment_count': post['comment_count'],
-                'keyword': post['keywords'],
+                'keywords': post['keywords'],
                 'comment': comment_data,
                 'status': 'UNCHANGED',
-            })
+            }       
             
             post['status'] = 'UNCHANGED'
-            is_success = update_changed_stats(conn, table_name, post['url'], post['comment_count'], post['view'], post['created_at'])
+            
+            # 모든 포스트에 대해 분석 작업 제출
+            future = analysis_executor.submit(analyze_post, payload)
+            current_batch.append(future)
+            # 완료된 작업들의 결과를 수집
+            if len(current_batch) >= BATCH_SIZE:
+                print(f"배치 처리 시작 (크기: {len(current_batch)})")
+                batch_results = process_batch(current_batch)
+                payloads.extend(batch_results)
+                current_batch = []
+
+            is_success = update_changed_stats(conn, table_name, post['url'], post['comment_count'], post['view'], post['created_at'])            
             if is_success:
                 print(f"[INFO] {post['url']} 업데이트 성공")
             else:
@@ -219,8 +270,12 @@ def parse_detail() -> Optional[List[Dict]]:
             update_status_failed(conn, table_name, post['url'])
             print(f"[ERROR] {post['url']} 업데이트 실패 / 이유: {e}")    
 
+    # 마지막 배치 처리
+    if current_batch:
+        print(f"마지막 배치 처리 (크기: {len(current_batch)})")
+        batch_results = process_batch(current_batch)
+        payloads.extend(batch_results)
         
-
     return [payload for payload in payloads if payload['status'] == 'UNCHANGED']
         
 
@@ -250,7 +305,7 @@ def lambda_handler(event, context):
             "body": "[INFO] 업데이트할 데이터가 없습니다."
         }
     try:
-        checked_at_dt = details_data[0]["checked_at"]
+        checked_at_dt = details_data[0]['checked_at']
         save_s3_bucket_by_parquet(
             checked_at_dt=checked_at_dt,
             platform="bobaedream", 
