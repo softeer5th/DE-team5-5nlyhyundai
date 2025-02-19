@@ -25,6 +25,7 @@ from settings import (
     S3_BUCKET,
 )
 
+json_match_ptrn = re.compile(r'\{.*\}')
 # 전역 변수로 connection 관리
 db_conn = None
 
@@ -657,7 +658,7 @@ def extract_json_from_response(response_text):
     GPT 응답에서 JSON 부분만 추출하고 정리하는 함수.
     """
     try:
-        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+        json_match = json_match_ptrn.search(response_text, re.DOTALL)
         if json_match:
             clean_json = json_match.group(0)
             return json.loads(clean_json)
