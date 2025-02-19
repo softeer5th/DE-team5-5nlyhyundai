@@ -49,7 +49,6 @@ def analyze_post(payload):
     
 def process_batch(futures: List) -> List[Dict]:
     """배치 단위로 감성 분석 처리"""
-    futures = []
     results = []
        
     # 완료된 작업들의 결과를 수집
