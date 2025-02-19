@@ -173,7 +173,7 @@ def lambda_handler(event, context):
     if not posts_to_crawl:
         print("🔴 크롤링할 게시글 없음")
         driver.quit()
-        return {"statusCode": 200, "body": "No posts to crawl"}
+        return {"statusCode": 204, "body": "No posts to crawl"}
 
     print(f"🔍 크롤링할 게시글 수: {len(posts_to_crawl)}")
 
@@ -213,12 +213,29 @@ def lambda_handler(event, context):
         crawled_post.extend(batch_results)
         
 
-    # ✅ S3 저장
-    save_result = save_s3_bucket_by_parquet(
-        checked_at_dt=posts_to_crawl[0]['checked_at'],
-        platform="dcinside",
-        data=list(crawled_post)
-    )
+    if not crawled_post:
+        return {
+            'statusCode': 201,
+            'body': '[INFO] 업데이트할 데이터가 없습니다.'
+        }
+    
+    try :
+        # ✅ S3 저장
+        save_result = save_s3_bucket_by_parquet(
+            checked_at_dt=posts_to_crawl[0]['checked_at'],
+            platform="dcinside",
+            data=list(crawled_post)
+        )
+    except Exception as e:
+        print(f"[ERROR] S3 저장 실패: {e}")
+        conn = get_db_connection()
+        if crawled_post:
+            for failed_post in crawled_post:
+                update_status_failed(conn, table_name, failed_post['url'])
+        return {
+            'statusCode': 500,
+            'body': '[ERROR] S3 저장 실패'
+        }
 
     driver.quit()
-    return {"statusCode": 200, "body": json.dumps({"message": "Crawling & Analysis Completed"})}
+    return {"statusCode": 200, "body": json.dumps({"body": "[INFO] DETAIL / S3 저장 성공"})}
