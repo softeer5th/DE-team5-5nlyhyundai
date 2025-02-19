@@ -124,6 +124,14 @@ def lambda_handler(event, context):
                     created_at = created_at_element.get("title") if created_at_element else "Unknown"
                     created_at = datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S")
 
+                    if created_at > end_dt:
+                        print(f'[INFO] 기간이 더 뒤이기에 넘어갑니다. {end_dt} / 게시글 날짜: {created_at}')
+                        continue
+                    
+                    if created_at < start_dt:
+                        print(f'[INFO] 기간이 더 앞이기에 종료합니다. {start_dt} / 게시글 날짜: {created_at}')
+                        return True
+
                     print(f"제목: {title} | 댓글 수: {comment_count} | 키워드: {keyword}")
 
                     # ✅ 데이터 저장 (checked_at 추가)

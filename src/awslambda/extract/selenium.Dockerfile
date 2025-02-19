@@ -47,13 +47,13 @@ RUN /opt/chrome-driver/chromedriver-linux64/chromedriver --version
 
 # ✅ Python 패키지 설치
 RUN pip install --upgrade pip
-RUN pip install beautifulsoup4 requests pyarrow selenium psycopg2-binary boto3 python-dotenv smart_open
+RUN pip install beautifulsoup4 requests pyarrow selenium psycopg2-binary boto3 python-dotenv smart_open openai
 
 # ✅ Lambda 실행 코드 복사
-COPY dcmotors_lambda_detail.py /var/task/
+COPY dcmotors_lambda_detail_test.py /var/task/
 COPY common_utils.py /var/task/
 COPY settings.py /var/task/
 COPY .env.lambda /var/task/
 
 # ✅ Lambda 실행 핸들러 설정
-CMD ["dcmotors_lambda_detail.lambda_handler"]
+CMD ["dcmotors_lambda_detail_test.lambda_handler"]

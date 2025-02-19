@@ -3,7 +3,8 @@ import json
 import time
 import queue
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from typing import List, Dict, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from bs4 import BeautifulSoup
 from selenium.webdriver import Chrome
@@ -14,11 +15,8 @@ from selenium.webdriver.common.by import By
 from common_utils import (
     get_db_connection, get_details_to_parse, upsert_post_tracking_data,
     save_s3_bucket_by_parquet, update_status_changed, update_changed_stats,
-    analyze_post_with_gpt
+    analyze_post_with_gpt, update_status_failed
 )
-
-# 크롤링된 데이터를 감성 분석으로 넘기는 큐
-crawl_queue = queue.Queue()
 
 # 멀티스레드를 위한 설정
 analysis_executor = ThreadPoolExecutor(max_workers=5)
@@ -115,9 +113,9 @@ def crawl_post(driver, post):
             "keywords": keywords
         }
         
-        analysis_executor.submit(analyze_post, temp_post)
-
         print(f"✅ 크롤링 완료 및 감성 분석 시작: {url}")
+        
+        return temp_post
 
     except Exception as e:
         print(f"❌ 크롤링 실패: {e}")
@@ -128,18 +126,29 @@ def analyze_post(post):
         print(f"🎭 감성 분석 시작: {post['url']}")
         analyzed_post = analyze_post_with_gpt(post)
         print(f"✅ 감성 분석 완료: {post['url']}")
-
-        # 🔹 DB 업데이트
-        conn = get_db_connection()
-        update_result = update_changed_stats(conn, "probe_dcmotors", post["url"], post["comment_count"], post["view"], post["created_at"])
-
-        if update_result:
-            print(f"✅ DB 업데이트 완료: {post['url']}")
-        else:
-            print(f"❌ DB 업데이트 실패: {post['url']}")
-
+        return analyzed_post
+    
     except Exception as e:
         print(f"❌ 감성 분석 오류: {e}")
+        post['sentiment'] = None
+        for comment in post['comment']:
+            comment['sentiment'] = None
+        return post
+    
+def process_batch(futures: List) -> List[Dict]:
+    """배치 단위로 감성 분석 처리"""
+    results = []
+       
+    # 완료된 작업들의 결과를 수집
+    for future in as_completed(futures):
+        try:
+            result = future.result()
+            if result:
+                results.append(result)
+        except Exception as e:
+            print(f"Error processing batch item: {e}")
+    
+    return results
 
 def lambda_handler(event, context):
     """AWS Lambda에서 실행되는 핸들러 함수"""
@@ -160,15 +169,47 @@ def lambda_handler(event, context):
 
     print(f"🔍 크롤링할 게시글 수: {len(posts_to_crawl)}")
 
+    current_batch = []
+    BATCH_SIZE = min(10, len(posts_to_crawl))
+    crawled_post = []
+
     # ✅ 크롤링 → 감성 분석 즉시 실행 (순차 처리)
     for post in posts_to_crawl:
-        crawl_post(driver, post)  # 크롤링과 동시에 감성 분석 스레드 실행
+        try:
+            temp_post = crawl_post(driver, post)  # 크롤링과 동시에 감성 분석 스레드 실행
+            # 모든 포스트에 대해 분석 작업 제출
+            future = analysis_executor.submit(analyze_post, temp_post)
+            current_batch.append(future)
+            # 완료된 작업들의 결과를 수집
+            if len(current_batch) >= BATCH_SIZE:
+                print(f"배치 처리 시작 (크기: {len(current_batch)})")
+                batch_results = process_batch(current_batch)
+                crawled_post.extend(batch_results)
+                current_batch = []
+            
+            is_success = update_changed_stats(conn, table_name, post['url'], post['comment_count'], post['view'], post['created_at'])            
+            if is_success:
+                print(f"[INFO] {post['url']} 업데이트 성공")
+            else:
+                print(f"[INFO] {post['url']} 업데이트 실패")
+
+        except Exception as e:
+            post['status'] = 'FAILED'
+            temp_post['status'] = 'FAILED'
+            update_status_failed(conn, table_name, post['url'])
+            print(f"[ERROR] {post['url']} 업데이트 실패 / 이유: {e}")
+
+    if current_batch:
+        print(f"마지막 배치 처리 (크기: {len(current_batch)})")
+        batch_results = process_batch(current_batch)
+        crawled_post.extend(batch_results)
+        
 
     # ✅ S3 저장
     save_result = save_s3_bucket_by_parquet(
         checked_at_dt=posts_to_crawl[0]['checked_at'],
         platform="dcinside",
-        data=list(crawl_queue.queue)
+        data=list(crawled_post)
     )
 
     driver.quit()
