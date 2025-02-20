@@ -1,0 +1,8 @@
+# constaint는 적용하면 모두 설치하여 충돌을 방지하는 용도인데, 느린 속도로 인해 주석처리
+# 대신, 지원하는 라이브러리와 버전만 확인하고 설치.
+# --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.10.3/constraints-3.11.txt"
+
+apache-airflow-providers-amazon==9.0.0
+psycopg2-binary==2.9.10
+boto3==1.35.36
+apache-airflow-providers-postgres==5.13.1
