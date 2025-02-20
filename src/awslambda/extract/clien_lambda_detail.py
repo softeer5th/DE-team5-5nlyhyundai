@@ -34,6 +34,8 @@ analysis_executor = ThreadPoolExecutor(max_workers=EXECUTOR_MAX)
 
 def detail(event, context):
 # parameters
+    lambda_id = event.get("id")
+    
     get_my_ip()
     timestamp = 0
     
@@ -54,26 +56,30 @@ def detail(event, context):
             "body": "[ERROR] DETAIL/clien DB 연결 실패"
         }
     
+    return_dict = {
+        "status_code": 204,
+        "body": "[INFO] clien DETAIL / 파싱할 데이터가 없습니다."
+    }
+
     # DB에서 상세 정보를 가져올 게시물 목록
     table_name = 'probe_clien'
-    details = get_details_to_parse(conn, table_name)
-    if details is None:
-        print("[ERROR] DB 조회 실패")
-        return  {
-            "status_code": 500, 
-            "body": "[ERROR] DETAIL/clien DB 조회 실패"
-        }
-    
-    if details == []:
-        print("[INFO] 파싱할 게시물이 없습니다.")
-        return  {
-            "status_code": 204, 
-            "body": "[INFO] DETAIL/clien 파싱 할 데이터가 없습니다."
-        }
 
     timestamp = details[0]["checked_at"]
     
-    for post in details:
+    while True:
+        detail = get_details_to_parse(conn, table_name)
+        if detail is None:
+            print("[ERROR] DB 조회 실패")
+            return_dict["status_code"] = 500
+            return_dict["body"] = "[ERROR] DETAIL/clien DB 조회 실패"
+            break
+    
+        if detail == []:
+            print("[INFO] 파싱할 게시물이 없습니다.")
+            break
+        
+        post = detail # 이하 호환을 위해 변수 이름 변경(및 복사)
+
         post_url = post["url"]
         REQUEST_REST = 1 + random.random()
         
@@ -82,24 +88,12 @@ def detail(event, context):
         if response.status_code != 200:
             print("headers:", response.headers)
             print("body:", response.text)
-            update_status_banned(conn, table_name, post['url'])
-            for future in as_completed(futures):
-                try:
-                    post_data = future.result()
-                    if post_data:
-                        all_post.append(post_data)
-                        update_changed_stats(conn, table_name, post_data['url'], post_data['comment_count'], post_data['view'], post_data['created_at'])
-                        print(f"{post_data['url']} - Done!")
-                except Exception as e:
-                    print(f"Error processing post: {e}")
-            save_s3_bucket_by_parquet(timestamp, platform='clien', data=all_post)
-            return  {
-                "status_code": 403, 
-                "body": "[WARNING] DETAIL/clien IP 차단"
-            }
 
-            continue
-        
+            update_status_banned(conn, table_name, post['url'])
+            return_dict["status_code"] = 403
+            return_dict["body"] = "[WARNING] DETAIL/clien IP 차단"
+            break
+
         update_status_unchanged(conn, table_name, post['url'])
         soup = BeautifulSoup(response.content, "html.parser")
 
@@ -107,6 +101,7 @@ def detail(event, context):
         all_comments = []
 
         for row in comments_raw:
+                
             if "blocked" in row.get("class", []):
                 continue  # 차단된 댓글 제외
 
@@ -168,6 +163,8 @@ def detail(event, context):
         except TimeoutError:
             print("gpt timeout! get next page...")
             continue
+
+
     for future in as_completed(futures):
         try:
             post_data = future.result()
@@ -177,16 +174,14 @@ def detail(event, context):
                 print(f"{post_data['url']} - Done!")
         except Exception as e:
             print(f"Error processing post: {e}")
+            
     if len(all_post) == 0:
-        return {
-            "status_code": 201,
-            "body": "[INFO] DETAIL/clien 업데이트할 데이터가 없습니다."
-        }
-    save_res = save_s3_bucket_by_parquet(timestamp, platform='clien', data=all_post)
+        return return_dict
+    save_res = save_s3_bucket_by_parquet(timestamp, platform='clien', data=all_post, id=lambda_id)
     if save_res is None:
         return {
             "status_code": 500,
-            "body": "[ERROR] DETAIL / S3 저장 실패"
+            "body": "[FATAL ERROR] DETAIL / S3 저장 실패"
         }
     return {
         "status_code": 200,
