@@ -1,6 +1,10 @@
 import os
 import json
 import time
+import queue
+import threading
+from typing import List, Dict, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from bs4 import BeautifulSoup
 from selenium.webdriver import Chrome
@@ -8,188 +12,255 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from tempfile import mkdtemp
 from selenium.webdriver.common.by import By
-from common_utils import get_db_connection, get_details_to_parse, upsert_post_tracking_data, save_s3_bucket_by_parquet, update_status_changed, update_changed_stats
+from common_utils import (
+    get_db_connection, get_details_to_parse, upsert_post_tracking_data,
+    save_s3_bucket_by_parquet, update_status_changed, update_changed_stats,
+    analyze_post_with_gpt, update_status_failed
+)
 
-def lambda_handler(event, context):
-    # ✅ 웹드라이버 옵션 설정
+# 멀티스레드를 위한 설정
+analysis_executor = ThreadPoolExecutor(max_workers=20)
+
+def setup_webdriver():
+    """웹드라이버 설정 및 실행"""
     chrome_options = ChromeOptions()
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--disable-setuid-sandbox")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--disable-dev-tools")
     chrome_options.add_argument("--no-zygote")
     chrome_options.add_argument("--single-process")
     chrome_options.add_argument(f"--user-data-dir={mkdtemp()}")
     chrome_options.add_argument(f"--data-path={mkdtemp()}")
-    chrome_options.add_argument(f"--disk-cache-dir={mkdtemp()}")
+    chrome_options.add_argument(f"--user-data-dir={mkdtemp()}")
     chrome_options.add_argument("--remote-debugging-pipe")
     chrome_options.add_argument("--verbose")
     chrome_options.add_argument("--log-path=/tmp")
-    chrome_options.binary_location = "/opt/chrome/chrome-linux64/chrome"
+
+    # Mac 환경 특화 설정 추가
+    chrome_options.add_argument("--disable-notifications")
+    chrome_options.add_argument("--ignore-certificate-errors")
+    chrome_options.add_argument("--disable-popup-blocking")
+
     prefs = {
-        "profile.managed_default_content_settings.images": 2,  # 이미지 비활성화
-        "profile.managed_default_content_settings.ads": 2,     # 광고 비활성화
-        "profile.managed_default_content_settings.media": 2    # 비디오, 오디오 비활성화
+        "profile.managed_default_content_settings.images": 2,
+        "profile.managed_default_content_settings.ads": 2,
+        "profile.managed_default_content_settings.media": 2,
+        "profile.default_content_setting_values.notifications": 2,
+        "profile.default_content_setting_values.plugins": 2
     }
     chrome_options.add_experimental_option("prefs", prefs)
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option("useAutomationExtension", False)
 
-    # ✅ Docker에 미리 설치된 Chrome과 ChromeDriver 경로 설정
-    chrome_options.binary_location = "/opt/chrome/chrome-linux64/chrome"
-    service = Service("/opt/chrome-driver/chromedriver-linux64/chromedriver")
+    try:
+        chrome_options.binary_location = "/opt/chrome/chrome-linux64/chrome"
+        service = Service("/opt/chrome-driver/chromedriver-linux64/chromedriver")
+        driver = Chrome(service=service, options=chrome_options)
+        driver.set_page_load_timeout(30)
+        return driver
+    except Exception as e:
+        print(f"❌ 웹드라이버 실행 실패: {str(e)}")
+        raise e
 
-    # ✅ 웹드라이버 실행
-    print("🚀 웹드라이버 실행 중...")
-    driver = Chrome(service=service, options=chrome_options)
+def crawl_post(driver, post):
+    """웹 크롤링 수행 후 데이터를 감성 분석으로 넘김"""
+    try:
+        url = post["url"]
+        print(f"📝 크롤링 시작: {url}")
+        driver.get(url)
+        time.sleep(1)  # 크롤링 간격 조정하여 IP 차단 방지
 
-    # ✅ DB 연결
+        soup = BeautifulSoup(driver.page_source, "html.parser")
+
+        title = soup.title.text.strip() if soup.title else "제목 없음"
+        content = soup.select_one("div.write_div").text.strip() if soup.select_one("div.write_div") else "본문 없음"
+        views = int(soup.select_one("span.gall_count").text.strip().replace("조회 ", "")) if soup.select_one("span.gall_count") else post['view']
+        likes = int(soup.select_one("div.up_num_box p.up_num").text.strip()) if soup.select_one("div.up_num_box p.up_num") else 0
+        dislikes = int(soup.select_one("div.down_num_box p.down_num").text.strip()) if soup.select_one("div.down_num_box p.down_num") else 0
+        comments_count = int(soup.select_one("span.gall_comment").text.strip().replace("댓글 ", "")) if soup.select_one("span.gall_comment") else post['comment_count']
+        post_id = post.get("post_id", None)
+        keywords = post.get("keywords", [])
+        created_at = post["created_at"]
+
+        # 🔹 댓글 크롤링
+        def _get_post_comments():
+            comment_elements = soup.select("li.ub-content div.clear.cmt_txtbox p.usertxt.ub-word")
+            comments = []
+
+            for el in comment_elements:
+                comment_text = el.text.strip() if el else "댓글 없음"
+                comment_date = created_at  # 기본값
+
+                comments.append({
+                    "created_at": comment_date,
+                    "content": comment_text,
+                    "like": None,
+                    "dislike": None
+                })
+
+            return comments
+
+        comments = _get_post_comments()
+
+        # 🔹 크롤링 데이터 저장 후 즉시 감성 분석으로 넘김
+        temp_post = {
+            "title": title,
+            "post_id": post_id,
+            "url": url,
+            "content": content,
+            "view": views,
+            "created_at": created_at,
+            "like": likes,
+            "dislike": dislikes,
+            "comment_count": comments_count,
+            "comment": comments,
+            "keywords": keywords
+        }
+        
+        print(f"✅ 크롤링 완료 및 감성 분석 시작: {url}")
+        
+        return temp_post
+
+    except Exception as e:
+        print(f"❌ 크롤링 실패: {e}")
+
+def analyze_post(post):
+    """크롤링된 데이터를 감성 분석 수행"""
+    try:
+        print(f"🎭 감성 분석 시작: {post['url']}")
+        analyzed_post = analyze_post_with_gpt(post)
+        print(f"✅ 감성 분석 완료: {post['url']}")
+        return analyzed_post
+    
+    except Exception as e:
+        print(f"❌ 감성 분석 오류: {e}")
+        post['sentiment'] = None
+        for comment in post['comment']:
+            comment['sentiment'] = None
+        return post
+    
+def process_batch(futures: List) -> List[Dict]:
+    """배치 단위로 감성 분석 처리"""
+    results = []
+       
+    # 완료된 작업들의 결과를 수집
+    for future in as_completed(futures):
+        try:
+            result = future.result()
+            if result:
+                results.append(result)
+        except Exception as e:
+            print(f"Error processing batch item: {e}")
+    
+    return results
+
+def lambda_handler(event, context):
+    start_time = time.time()
+    """AWS Lambda에서 실행되는 핸들러 함수"""
+    driver = setup_webdriver()
     conn = get_db_connection()
+    
     if conn is None:
         print("🔴 DB 연결 실패")
-        return {"statusCode": 500, "body": "DB 연결 실패"}
+        return {"status_code": 500, "body": "DB 연결 실패"}
 
-    # ✅ 크롤링할 URL 가져오기
-    table_name = event.get("table_name", "probe_dcmotors")  # 기본 테이블 이름
+    table_name = event.get("table_name", "probe_dcmotors")
     posts_to_crawl = get_details_to_parse(conn, table_name)
 
     if not posts_to_crawl:
         print("🔴 크롤링할 게시글 없음")
         driver.quit()
-        return {"statusCode": 200, "body": "No posts to crawl"}
+        return {"status_code": 204, "body": "No posts to crawl"}
 
     print(f"🔍 크롤링할 게시글 수: {len(posts_to_crawl)}")
 
-    # ✅ 크롤링할 데이터 리스트
-    crawled_posts = []
+    current_batch = []
+    BATCH_SIZE = min(50, len(posts_to_crawl))
+    crawled_post = []
 
-    for idx, post in enumerate(posts_to_crawl):
+    # ✅ 크롤링 → 감성 분석 즉시 실행 (순차 처리)
+    for post in posts_to_crawl:
         try:
-            url = post["url"]
-            print(f"📝 ({idx+1}/{len(posts_to_crawl)}) 게시글 크롤링 시작: {url}")
-
-            driver.get(url)
-            time.sleep(1)  # ⏳ 페이지 로딩 대기
-
-            soup = BeautifulSoup(driver.page_source, "html.parser")
-
-            try:
-                title = soup.title.text.strip()
-            except:
-                title = "제목 없음"
-
-            try:
-                content = soup.select_one("div.write_div").text.strip()
-            except:
-                content = "본문 없음"
-
-            try:
-                views = int(soup.select_one("span.gall_count").text.strip().replace("조회 ", ""))
-            except:
-                views = post['view']
-
-            try:
-                likes = int(soup.select_one("div.up_num_box p.up_num").text.strip())
-            except:
-                likes = 0
-
-            try:
-                dislikes = int(soup.select_one("div.down_num_box p.down_num").text.strip())
-            except:
-                dislikes = 0
-
-            try:
-                comments_count = int(soup.select_one("span.gall_comment").text.strip().replace("댓글 ", ""))
-            except:
-                comments_count = post['comment_count']
-
-            try:
-                post_id = post['post_id']
-            except:
-                post_id = None
-
-            keywords = post['keywords']
-
-            created_at = post["created_at"]
-
-            # 🔹 댓글 크롤링
-            def _get_post_comments():
-                comment_elements = soup.select("li.ub-content div.clear.cmt_txtbox p.usertxt.ub-word")
-                comments = []
-
-                for el in comment_elements:
-                    try:
-                        comment_text = el.text.strip()
-                    except:
-                        comment_text = "댓글 없음"
-
-                    try:
-                        comment_date_str = el.find_parent("li").select_one("div.cmt_info span.date_time").text.strip()
-                        if len(comment_date_str) == 14:  # 예: "08-06 11:04:05"
-                            comment_date = datetime.strptime(comment_date_str, "%m-%d %H:%M")
-                            comment_date = comment_date.replace(year=created_at.year)  # 연도 추가
-                        # :흰색_확인_표시: 날짜 문자열이 "YYYY-MM-DD HH:MM" 형식인 경우
-                        elif len(comment_date_str) == 19:  # 예: "2024-08-06 11:04:05"
-                            comment_date = datetime.strptime(comment_date_str, "%Y-%m-%d %H:%M")
-                        else:
-                            print(f":x: 날짜 형식 오류: {comment_date_str}")
-                    except:
-                        comment_date = created_at
-
-                    comments.append({
-                        "created_at": comment_date,
-                        "content": comment_text,
-                        "like" : None,
-                        "dislike" : None
-                    })
-
-                return comments
-
-            comments = _get_post_comments()
-
-            # 🔹 데이터 저장을 위해 Parquet용 리스트에 추가
-            crawled_posts.append({
-                "platform": "DC",
-                "title": title,
-                "post_id": post_id,
-                "url": url,
-                "content": content,
-                "view": views,
-                "created_at": created_at,
-                "like": likes,
-                "dislike": dislikes,
-                "comment_count": comments_count,
-                "comment": comments,
-                "keywords" : keywords
-            })
-
-            # 🔹 DB에서 상태 업데이트
-            update_result = update_changed_stats(conn, table_name, url, comments_count, views, created_at)
-
-            if update_result:
-                print(f"✅ DB 상태 업데이트 완료: {url}")
+            temp_post = crawl_post(driver, post)  # 크롤링과 동시에 감성 분석 스레드 실행
+            # 모든 포스트에 대해 분석 작업 제출
+            future = analysis_executor.submit(analyze_post, temp_post)
+            current_batch.append(future)
+            # 완료된 작업들의 결과를 수집
+            if len(current_batch) >= BATCH_SIZE:
+                print(f"배치 처리 시작 (크기: {len(current_batch)})")
+                batch_results = process_batch(current_batch)
+                crawled_post.extend(batch_results)
+                current_batch = []
+            
+            is_success = update_changed_stats(conn, table_name, post['url'], post['comment_count'], post['view'], post['created_at'])            
+            if is_success:
+                print(f"[INFO] {post['url']} 업데이트 성공")
             else:
-                print(f"❌ DB 상태 업데이트 실패: {url}")
+                print(f"[INFO] {post['url']} 업데이트 실패")
+
+            # ✅ 14분이 지나면 S3에 저장 후 강제 종료
+            if time.time() - start_time > 840:  # 14분 초과
+                print("⏳ 14분 경과, 즉시 S3에 저장 후 종료")
+
+            try:
+                save_s3_bucket_by_parquet(
+                    checked_at_dt=posts_to_crawl[0]['checked_at'],
+                    platform="dcinside",
+                    data=list(crawled_post)
+                )
+            except Exception as e:
+                print(f"[ERROR] S3 저장 실패: {e}")
+                conn = get_db_connection()
+                for failed_post in crawled_post:
+                    update_status_failed(conn, table_name, failed_post['url'])
+                return {
+                    'status_code': 500,
+                    'body': '[ERROR] S3 저장 실패'
+                }
+            
+            driver.quit()
+            return {"status_code": 200, "body": json.dumps({"body": "[INFO] 14분 경과, 데이터 저장 후 종료"})}
+
 
         except Exception as e:
-            print(f"❌ 게시글 크롤링 오류: {e}")
-            continue
+            post['status'] = 'FAILED'
+            temp_post['status'] = 'FAILED'
+            update_status_failed(conn, table_name, post['url'])
+            print(f"[ERROR] {post['url']} 업데이트 실패 / 이유: {e}")
 
-    # ✅ 크롤링 데이터 Parquet 저장 (S3 업로드)
-    save_result = save_s3_bucket_by_parquet(
-        checked_at_dt=posts_to_crawl[0]['checked_at'],
-        platform="dcinside",
-        data=crawled_posts
-    )
+    if current_batch:
+        print(f"마지막 배치 처리 (크기: {len(current_batch)})")
+        batch_results = process_batch(current_batch)
+        crawled_post.extend(batch_results)
+        
 
-    if save_result:
-        print("✅ Parquet 파일 S3 저장 완료")
-    else:
-        print("❌ Parquet 파일 저장 실패")
+    if not crawled_post:
+        return {
+            'status_code': 201,
+            'body': '[INFO] 업데이트할 데이터가 없습니다.'
+        }
+    
+    try :
+        # ✅ S3 저장
+        save_result = save_s3_bucket_by_parquet(
+            checked_at_dt=posts_to_crawl[0]['checked_at'],
+            platform="dcinside",
+            data=list(crawled_post)
+        )
+    except Exception as e:
+        print(f"[ERROR] S3 저장 실패: {e}")
+        conn = get_db_connection()
+        if crawled_post:
+            for failed_post in crawled_post:
+                update_status_failed(conn, table_name, failed_post['url'])
+        return {
+            'status_code': 500,
+            'body': '[ERROR] S3 저장 실패'
+        }
 
-    # 🔹 브라우저 종료
     driver.quit()
-
-    return {
-        "statusCode": 200,
-        "body": json.dumps({"message": "Crawling & S3 upload completed"}, ensure_ascii=False, indent=4)
-    }
+    return {"status_code": 200, "body": json.dumps({"body": "[INFO] DETAIL / S3 저장 성공"})}

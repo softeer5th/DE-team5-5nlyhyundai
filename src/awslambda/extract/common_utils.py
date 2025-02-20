@@ -659,13 +659,9 @@ def extract_json_from_response(response_text):
     GPT 응답에서 JSON 부분만 추출하고 정리하는 함수.
     """
     try:
-        json_match = json_match_ptrn.search(response_text, re.DOTALL)
-        if json_match:
-            clean_json = json_match.group(0)
-            return json.loads(clean_json)
-        else:
-            print(f"⚠️ JSON 패턴을 찾을 수 없음: {response_text}")
-            return None
+        clean_text = re.sub(r"```json\s*([\s\S]*?)\s*```", r"\1", response_text.strip())
+        return json.loads(clean_text)
+    
     except json.JSONDecodeError as e:
         print(f"❌ JSON 디코딩 실패: {e}\nGPT 응답: {response_text}")
         return None
@@ -706,12 +702,13 @@ def analyze_post_with_gpt(post):
 
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
+            response_format={"type": "json_object"},
             messages=[{"role": "system", "content": "너는 JSON 응답을 제공하는 AI야."},
                       {"role": "user", "content": prompt}],
             temperature=0.7,
         )
 
-        gpt_output = response.choices[0].message.content
+        gpt_output = response.choices[0].message.content.strip()
         print(f"📌 GPT 응답 내용: {gpt_output}")
 
         if not gpt_output:
