@@ -36,7 +36,7 @@ def search(event, context):
     
     if timestamp:
         #event_time = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f%z")
-        event_time = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        event_time = datetime.fromisoformat(timestamp)
     else:
         event_time = datetime.now(timezone.utc)  # Fallback
     kst_time = event_time + timedelta(hours=9)  # UTC+9 (KST)
@@ -89,8 +89,7 @@ def search(event, context):
         for post in posts_raw:
             
             created_at_str = post.find("span", class_="timestamp").text
-            created_at = datetime.strptime(created_at_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-            created_at = created_at.astimezone(timezone(timedelta(hours=9)))
+            created_at = datetime.strptime(created_at_str, "%Y-%m-%d %H:%M:%S")
 
             if created_at < start_dt:
                 isNextPage = False
