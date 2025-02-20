@@ -63,7 +63,7 @@ def search(event, context):
     #p = 0
 
     #while isNextPage:
-    for p in range(10)
+    for p in range(10):
         full_url = BASIC_URL.format(query=urllib.parse.quote(query), page_num=p)
         headers = {
             "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
