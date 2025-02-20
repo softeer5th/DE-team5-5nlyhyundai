@@ -159,13 +159,14 @@ def process_batch(futures: List) -> List[Dict]:
     return results
 
 def lambda_handler(event, context):
+    start_time = time.time()
     """AWS Lambda에서 실행되는 핸들러 함수"""
     driver = setup_webdriver()
     conn = get_db_connection()
     
     if conn is None:
         print("🔴 DB 연결 실패")
-        return {"statusCode": 500, "body": "DB 연결 실패"}
+        return {"status_code": 500, "body": "DB 연결 실패"}
 
     table_name = event.get("table_name", "probe_dcmotors")
     posts_to_crawl = get_details_to_parse(conn, table_name)
@@ -173,7 +174,7 @@ def lambda_handler(event, context):
     if not posts_to_crawl:
         print("🔴 크롤링할 게시글 없음")
         driver.quit()
-        return {"statusCode": 204, "body": "No posts to crawl"}
+        return {"status_code": 204, "body": "No posts to crawl"}
 
     print(f"🔍 크롤링할 게시글 수: {len(posts_to_crawl)}")
 
@@ -201,6 +202,26 @@ def lambda_handler(event, context):
             else:
                 print(f"[INFO] {post['url']} 업데이트 실패")
 
+            # ✅ 14분이 지나면 S3에 저장 후 강제 종료
+            if time.time() - start_time > 840:  # 14분 초과
+                print("⏳ 14분 경과, 즉시 S3에 저장 후 종료")
+
+            try:
+                save_s3_bucket_by_parquet(
+                    checked_at_dt=posts_to_crawl[0]['checked_at'],
+                    platform="dcinside",
+                    data=list(crawled_post)
+                )
+            except Exception as e:
+                print(f"[ERROR] S3 저장 실패: {e}")
+                conn = get_db_connection()
+                for failed_post in crawled_post:
+                    update_status_failed(conn, table_name, failed_post['url'])
+                return {
+                    'status_code': 500,
+                    'body': '[ERROR] S3 저장 실패'
+                }
+
         except Exception as e:
             post['status'] = 'FAILED'
             temp_post['status'] = 'FAILED'
@@ -215,7 +236,7 @@ def lambda_handler(event, context):
 
     if not crawled_post:
         return {
-            'statusCode': 201,
+            'status_code': 201,
             'body': '[INFO] 업데이트할 데이터가 없습니다.'
         }
     
@@ -233,9 +254,9 @@ def lambda_handler(event, context):
             for failed_post in crawled_post:
                 update_status_failed(conn, table_name, failed_post['url'])
         return {
-            'statusCode': 500,
+            'status_code': 500,
             'body': '[ERROR] S3 저장 실패'
         }
 
     driver.quit()
-    return {"statusCode": 200, "body": json.dumps({"body": "[INFO] DETAIL / S3 저장 성공"})}
+    return {"status_code": 200, "body": json.dumps({"body": "[INFO] DETAIL / S3 저장 성공"})}

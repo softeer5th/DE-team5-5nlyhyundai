@@ -122,7 +122,8 @@ def lambda_handler(event, context):
                     # ✅ 작성일 가져오기
                     created_at_element = article.select_one("td.gall_date")
                     created_at = created_at_element.get("title") if created_at_element else "Unknown"
-                    created_at = datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S")
+                    created_at = datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                    created_at = created_at.astimezone(timezone(timedelta(hours=9)))
 
                     if created_at > end_dt:
                         print(f'[INFO] 기간이 더 뒤이기에 넘어갑니다. {end_dt} / 게시글 날짜: {created_at}')
