@@ -250,21 +250,23 @@ def upsert_post_tracking_data(
 def get_details_to_parse(
         conn,
         table_name,
-        total_rows: int = 50
+        total_rows: int = 1
         ) -> Optional[List[Dict]]:
     """
     detail 단계에서 처리할 url들을 가져옵니다.
+    [변경] 1개만 가져옵니다.
     """
     try:
         with conn.cursor() as cursor:
+            total_rows = 1
             sql = f"""
             UPDATE {table_name}
             SET status = 'UNCHANGED'
-            WHERE status != 'UNCHANGED'
+            WHERE status = 'CHANGED'
             AND id IN (
                 SELECT id 
                 FROM {table_name}
-                WHERE status != 'UNCHANGED'
+                WHERE status = 'CHANGED'
                 LIMIT {total_rows}
             )
             RETURNING *
@@ -275,7 +277,10 @@ def get_details_to_parse(
             conn.commit()  # 변경사항을 저장하기 위해 commit 필요
             for res in result:
                 res['status'] = "CHANGED"
-            return result
+                
+            if result == []:
+                return []            
+            return result[0] # 현재 한 개이므로 1개만 반환
     except Exception as e:
         print(f"[ERROR] DB 조회 에러: {e}")
         return None
@@ -510,6 +515,7 @@ def save_s3_bucket_by_parquet(
         checked_at_dt: datetime,
         platform: str,
         data: List[Dict],
+        id: str,
     ) -> Optional[bool]:
     """
     checked_at_dt: datetime 객체
@@ -629,8 +635,8 @@ def save_s3_bucket_by_parquet(
             comments_table = pa.Table.from_pylist(keywords_comments[keyword], schema=comments_schema)
 
             # S3 업로드 경로 설정
-            s3_posts_key = f"{date}/{hour}/{minute}/{keyword}/{platform}_posts.parquet"
-            s3_comments_key = f"{date}/{hour}/{minute}/{keyword}/{platform}_comments.parquet"
+            s3_posts_key = f"{date}/{hour}/{minute}/{keyword}/{id}_{platform}_posts.parquet"
+            s3_comments_key = f"{date}/{hour}/{minute}/{keyword}/{id}_{platform}_comments.parquet"
 
             # 게시물 데이터 업로드
             with smart_open.open(f"s3://{S3_BUCKET}/{s3_posts_key}", "wb") as s3_file:
