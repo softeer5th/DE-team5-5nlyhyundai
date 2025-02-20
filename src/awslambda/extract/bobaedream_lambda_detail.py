@@ -1,5 +1,5 @@
 import re
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 from datetime import datetime, timezone, timedelta
 import time
 import random
@@ -94,7 +94,7 @@ def parse_post_meta(post, post_meta):
     post['dislike'] = None
     post['created_at'] = posting_datetime
 
-def parse_detail() -> Optional[List[Dict]]:
+def parse_detail() -> Union[List[Dict] | int | None]:
     """
     검색 결과의 각 게시물에 대해 상세 정보를 파싱하여 추가합니다.
     
@@ -129,6 +129,7 @@ def parse_detail() -> Optional[List[Dict]]:
     if details == []:
         print("[INFO] 파싱할 게시물이 없습니다.")
         return 204
+    
     payloads = []
     current_batch = []
     BATCH_SIZE = min(50, len(details))
@@ -287,22 +288,17 @@ def lambda_handler(event, context):
     if details_data == 500:
         return {
             "status_code": 500,
-            "body": "[ERROR] DB 연결 실패"
+            "body": "[ERROR] DETAIL / DB 연결 실패"
         }
     if details_data == 204:
         return {
             "status_code": 204,
-            "body": "[INFO] 파싱할 데이터가 없습니다."
-        }
-    elif details_data == 403:
-        return {
-            "status_code": 403,
-            "body": "[WARNING] 보배드림 IP 차단됨!"
+            "body": "[INFO] DETAIL / 파싱할 데이터가 없습니다."
         }
     elif details_data == []:
         return {
             "status_code": 201,
-            "body": "[INFO] 업데이트할 데이터가 없습니다."
+            "body": "[INFO] DETAIL / 업데이트할 데이터가 없습니다."
         }
     try:
         checked_at_dt = details_data[0]['checked_at']
@@ -311,6 +307,16 @@ def lambda_handler(event, context):
             platform="bobaedream", 
             data=details_data
         )
+        status_code = 200
+        if isinstance(details_data, tuple) and details_data[0] == 403:
+            status_code = details_data[0]
+            details_data = details_data[1]
+            print("[WARNING] DETAIL / 보배드림 IP 차단됨!")
+        if status_code == 403:
+            return {
+                "status_code": 403,
+                "body": f"[WARNING] DETAIL / IP 차단됨 / 크롤링 데이터: {len(details_data)} 건"
+            }
         return {
             "status_code": 200,
             "body": f"[INFO] S3 저장 완료: {len(details_data)} 건"

@@ -17,7 +17,7 @@ from common_utils import (
 )
 linebreak_ptrn = re.compile(r'(\n){2,}')  # 줄바꿈 문자 매칭
 
-def extract_bobaedream(start_date, page_num, keyword):
+def extract_bobaedream(start_date, page_num, keyword) -> Optional[str]:
     form_data = {
         'keyword': keyword,
         'colle': 'community',
@@ -55,8 +55,11 @@ def extract_bobaedream(start_date, page_num, keyword):
     if response.status_code != 200:
         print(f"확인 필요! status code: {response.status_code}")
         if response.status_code == 403:
-            print(f"IP 차단됨. {response.status_code}")
-        return None
+            print(f"[WARNING] SEARCH / 보배드림 IP 차단됨! {response.status_code}")
+            return None
+        else:
+            print(f"[WARNING] 기타 오류 / {response.status_code}")
+            return None
     
     return response.text
 
@@ -73,12 +76,12 @@ def parse_search(
     # search_data = []
     if not community_results:
         print('[ERROR] 검색 결과가 없거나, 에러가 발생했습니다.')
-        return
+        return 404
     
     conn = get_db_connection()
     if conn is None:
         print("[ERROR] DB 연결 실패")
-        return
+        return 500
     
     table_name = 'probe_bobae'
     for community_result in community_results:
@@ -195,7 +198,25 @@ def lambda_handler(event, context):
     for i in range(1, 1000):
         html = extract_bobaedream(start_date, page_num=i, keyword=keyword)
         # save_html('htmls/search', html)
-        has_done = parse_search(html, start_dt=start_dt, end_dt=end_dt, checked_at=checked_at, keyword=keyword)   
-        if has_done:
+        if html is None:
+            return {
+                "status_code": 403,
+                "body": "[WARNING] SEARCH / 보배드림(platform으로 대체) IP 차단됨!"
+            }
+        result = parse_search(html, start_dt=start_dt, end_dt=end_dt, checked_at=checked_at, keyword=keyword)   
+        if result == 404:
+            print(f"[INFO] 검색 결과가 없습니다. {keyword}")
+        
+        if result == 500:
+            print(f"[ERROR] DB 연결 실패: {keyword}")
+            return {
+                "status_code": 500,
+                "body": "[ERROR] SEARCH / DB 연결 실패"
+            }
+            
+        if result == True:
             print(f"[INFO] 보배드림 검색 종료: {keyword}")
-            break
+            return {
+                "status_code": 200,
+                "body":  "[INFO] SEARCH / DB 업데이트 성공"
+            }
