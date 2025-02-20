@@ -556,6 +556,7 @@ def save_s3_bucket_by_parquet(
         post.pop('status', None)
         post.pop('checked_at', None)
         post['platform'] = platform
+        post['checked_at'] = checked_at_dt
         try:
             post['like'] = int(post['like'])
         except:
@@ -575,6 +576,7 @@ def save_s3_bucket_by_parquet(
         for comment in post_comments:
             comment['post_id'] = post['post_id']
             # 좋아요, 싫어요 수가 없는 경우 None으로 처리
+            comment['checked_at'] = checked_at_dt
             try:
                 comment['like'] = int(comment['like'])
             except:
