@@ -31,16 +31,16 @@ def search(event, context):
     # parameters
     timestamp = event.get("checked_at")
     query = event.get("keyword")
-    start_date = event.get("start_date")
-    end_date = event.get("end_date")
+    #start_date = event.get("start_date")
+    #end_date = event.get("end_date")
     
     if timestamp:
         #event_time = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f%z")
-        event_time = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        event_time = datetime.fromisoformat(timestamp)
     else:
         event_time = datetime.now(timezone.utc)  # Fallback
     kst_time = event_time + timedelta(hours=9)  # UTC+9 (KST)
-
+    """
     if start_date:
         start_dt = datetime.strptime(start_date, "%Y-%m-%d")
     else:
@@ -50,7 +50,7 @@ def search(event, context):
         end_dt = datetime.strptime(end_date, "%Y-%m-%d")
     else:
         end_dt = kst_time
-
+    """
 
     conn = get_db_connection()
     if conn is None:
@@ -60,9 +60,10 @@ def search(event, context):
         }
 
     isNextPage = True
-    p = 0
+    #p = 0
 
-    while isNextPage:
+    #while isNextPage:
+    for p in range(10):
         full_url = BASIC_URL.format(query=urllib.parse.quote(query), page_num=p)
         headers = {
             "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
@@ -77,7 +78,7 @@ def search(event, context):
             print("body:", response.text)
             return  {
                 "status_code": 403, 
-                "body": "[WARNING] SEACH/clien 연결 실패"
+                "body": "[WARNING] SEARCH/clien 연결 실패"
             }
             break
 
@@ -90,13 +91,14 @@ def search(event, context):
             
             created_at_str = post.find("span", class_="timestamp").text
             created_at = datetime.strptime(created_at_str, "%Y-%m-%d %H:%M:%S")
+            """
             if created_at < start_dt:
                 isNextPage = False
                 break
 
             if (created_at > end_dt):
                 continue
-            
+            """
             hit_raw = post.find("span", class_="hit").text.split(" ")
             hit = float(hit_raw[0])
 
@@ -121,7 +123,7 @@ def search(event, context):
             upsert_post_tracking_data(conn, SEARCH_TABLE ,post_content)
         
         time.sleep(REQUEST_REST)
-        p += 1
+        #p += 1
         
 
 
