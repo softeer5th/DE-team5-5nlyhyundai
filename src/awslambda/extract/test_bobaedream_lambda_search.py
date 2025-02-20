@@ -19,14 +19,13 @@ from common_utils import (
 linebreak_ptrn = re.compile(r'(\n){2,}')  # 줄바꿈 문자 매칭
 
 def extract_bobaedream(start_date, page_num, keyword) -> Optional[str]:
-    print(f"시작 날짜 및 시간: {start_date.strftime('%y.%m.%d')}")
     form_data = {
         "keyword": keyword,
         "colle": "community",
         "searchField": "ALL",
         "page": page_num,
         "sort": "DATE",
-        'startDate': start_date.strftime('%y.%m.%d'),
+        'startDate': "",
     }
     # data = urlencode(form_data)
     data = form_data
@@ -139,9 +138,9 @@ def parse_search(
                     print(f'[INFO] 기간이 더 뒤이기에 넘어갑니다. {end_dt} / 게시글 날짜: {created_at_dt}')
                     continue
                 
-                if created_at_dt < start_dt:
-                    print(f'[INFO] 기간이 더 앞이기에 종료합니다. {start_dt} / 게시글 날짜: {created_at_dt}')
-                    return True
+                # if created_at_dt < start_dt:
+                #     print(f'[INFO] 기간이 더 앞이기에 종료합니다. {start_dt} / 게시글 날짜: {created_at_dt}')
+                #     return True
 
                 if payload['category'] == '내차사진':
                     print(f'[WARNING] 내차사진이어서 스킵합니다. {title}')
@@ -181,7 +180,7 @@ def lambda_handler(event, context):
     # 게시글 시작 날짜
     start_date = event.get('start_date')
     if start_date is None:
-        start_dt = checked_at - timedelta(days=14)
+        start_dt = checked_at - timedelta(hours=6)
     else:
         start_dt = datetime.strptime(start_date, '%Y-%m-%d')
         # start_dt = start_dt.replace(tzinfo=timezone.utc)  # UTC로 변환
@@ -198,7 +197,7 @@ def lambda_handler(event, context):
     
     # 검색할 키워드
     keyword = event.get('keyword')
-    for i in range(1, 1000):
+    for i in range(100, 150):
         html = extract_bobaedream(start_date, page_num=i, keyword=keyword)
         # save_html('htmls/search', html)
         if html is None:
