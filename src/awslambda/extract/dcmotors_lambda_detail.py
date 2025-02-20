@@ -159,6 +159,7 @@ def process_batch(futures: List) -> List[Dict]:
     return results
 
 def lambda_handler(event, context):
+    id = event.get('id')
     start_time = time.time()
     """AWS Lambda에서 실행되는 핸들러 함수"""
     driver = setup_webdriver()
@@ -169,94 +170,66 @@ def lambda_handler(event, context):
         return {"status_code": 500, "body": "DB 연결 실패"}
 
     table_name = event.get("table_name", "probe_dcmotors")
-    posts_to_crawl = get_details_to_parse(conn, table_name)
-
-    if not posts_to_crawl:
-        print("🔴 크롤링할 게시글 없음")
-        driver.quit()
-        return {"status_code": 204, "body": "No posts to crawl"}
-
-    print(f"🔍 크롤링할 게시글 수: {len(posts_to_crawl)}")
 
     current_batch = []
-    BATCH_SIZE = min(50, len(posts_to_crawl))
+    BATCH_SIZE = 50
     crawled_post = []
 
     # ✅ 크롤링 → 감성 분석 즉시 실행 (순차 처리)
-    for post in posts_to_crawl:
-        try:
-            temp_post = crawl_post(driver, post)  # 크롤링과 동시에 감성 분석 스레드 실행
-            # 모든 포스트에 대해 분석 작업 제출
-            future = analysis_executor.submit(analyze_post, temp_post)
-            current_batch.append(future)
-            # 완료된 작업들의 결과를 수집
-            if len(current_batch) >= BATCH_SIZE:
-                print(f"배치 처리 시작 (크기: {len(current_batch)})")
-                batch_results = process_batch(current_batch)
-                crawled_post.extend(batch_results)
-                current_batch = []
-            
-            is_success = update_changed_stats(conn, table_name, post['url'], post['comment_count'], post['view'], post['created_at'])            
-            if is_success:
-                print(f"[INFO] {post['url']} 업데이트 성공")
-            else:
-                print(f"[INFO] {post['url']} 업데이트 실패")
+    while True:
+        post = get_details_to_parse(conn, table_name)
 
-            # ✅ 14분이 지나면 S3에 저장 후 강제 종료
-            if time.time() - start_time > 840:  # 14분 초과
-                print("⏳ 14분 경과, 즉시 S3에 저장 후 종료")
+        if post is None :
+            return {
+            "status_code": 500,
+            "body": "[ERROR] DETAIL / DB 연결 실패"
+            }
+        
+        if post == [] :
+            break
 
-            try:
-                save_s3_bucket_by_parquet(
-                    checked_at_dt=posts_to_crawl[0]['checked_at'],
-                    platform="dcinside",
-                    data=list(crawled_post)
-                )
-            except Exception as e:
-                print(f"[ERROR] S3 저장 실패: {e}")
-                conn = get_db_connection()
-                for failed_post in crawled_post:
-                    update_status_failed(conn, table_name, failed_post['url'])
-                return {
-                    'status_code': 500,
-                    'body': '[ERROR] S3 저장 실패'
-                }
-            
-            driver.quit()
-            return {"status_code": 200, "body": json.dumps({"body": "[INFO] 14분 경과, 데이터 저장 후 종료"})}
+        checked_at = post['checked_at']
+        temp_post = crawl_post(driver, post)  # 크롤링과 동시에 감성 분석 스레드 실행
 
+        is_success = update_changed_stats(conn, table_name, post['url'], post['comment_count'], post['view'], post['created_at'])            
+        if is_success:
+            print(f"[INFO] {post['url']} 업데이트 성공")
+        else:
+            print(f"[INFO] {post['url']} 업데이트 실패")
 
-        except Exception as e:
-            post['status'] = 'FAILED'
-            temp_post['status'] = 'FAILED'
-            update_status_failed(conn, table_name, post['url'])
-            print(f"[ERROR] {post['url']} 업데이트 실패 / 이유: {e}")
+        # 모든 포스트에 대해 분석 작업 제출
+        future = analysis_executor.submit(analyze_post, temp_post)
+        current_batch.append(future)
+
+        if time.time() - start_time > 840 :
+            print("14분 경과")
+            break
+
+        # 완료된 작업들의 결과를 수집
+        if len(current_batch) >= BATCH_SIZE:
+            print(f"배치 처리 시작 (크기: {len(current_batch)})")
+            batch_results = process_batch(current_batch)
+            crawled_post.extend(batch_results)
+            current_batch = []
 
     if current_batch:
-        print(f"마지막 배치 처리 (크기: {len(current_batch)})")
+        print(f"배치 처리 시작 (크기: {len(current_batch)})")
         batch_results = process_batch(current_batch)
         crawled_post.extend(batch_results)
-        
+        current_batch = []
 
-    if not crawled_post:
-        return {
-            'status_code': 201,
-            'body': '[INFO] 업데이트할 데이터가 없습니다.'
-        }
-    
-    try :
-        # ✅ S3 저장
-        save_result = save_s3_bucket_by_parquet(
-            checked_at_dt=posts_to_crawl[0]['checked_at'],
+    try:
+        save_s3_bucket_by_parquet(
+            checked_at_dt=checked_at,
             platform="dcinside",
-            data=list(crawled_post)
+            data=list(crawled_post),
+            id = id
         )
     except Exception as e:
         print(f"[ERROR] S3 저장 실패: {e}")
         conn = get_db_connection()
-        if crawled_post:
-            for failed_post in crawled_post:
-                update_status_failed(conn, table_name, failed_post['url'])
+        for failed_post in crawled_post:
+            update_status_failed(conn, table_name, failed_post['url'])
         return {
             'status_code': 500,
             'body': '[ERROR] S3 저장 실패'

@@ -50,6 +50,7 @@ RUN pip install --upgrade pip
 RUN pip install beautifulsoup4 requests pyarrow selenium psycopg2-binary boto3 python-dotenv smart_open openai
 
 # ✅ Lambda 실행 코드 복사
+COPY dcmotors_lambda_detail.py /var/task/
 COPY dcmotors_lambda_detail_test.py /var/task/
 COPY common_utils.py /var/task/
 COPY settings.py /var/task/
