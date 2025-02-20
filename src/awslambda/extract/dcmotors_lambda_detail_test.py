@@ -221,6 +221,10 @@ def lambda_handler(event, context):
                     'status_code': 500,
                     'body': '[ERROR] S3 저장 실패'
                 }
+            
+            driver.quit()
+            return {"status_code": 200, "body": json.dumps({"body": "[INFO] 14분 경과, 데이터 저장 후 종료"})}
+
 
         except Exception as e:
             post['status'] = 'FAILED'
