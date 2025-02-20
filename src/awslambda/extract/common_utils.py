@@ -250,6 +250,7 @@ def upsert_post_tracking_data(
 def get_details_to_parse(
         conn,
         table_name,
+        total_rows: int = 50
         ) -> Optional[List[Dict]]:
     """
     detail 단계에서 처리할 url들을 가져옵니다.
@@ -257,15 +258,23 @@ def get_details_to_parse(
     try:
         with conn.cursor() as cursor:
             sql = f"""
-            SELECT 
-                * 
-            FROM 
-                {table_name} 
+            UPDATE {table_name}
+            SET status = 'UNCHANGED'
             WHERE status != 'UNCHANGED'
+            AND id IN (
+                SELECT id 
+                FROM {table_name}
+                WHERE status != 'UNCHANGED'
+                LIMIT {total_rows}
+            )
+            RETURNING *
             """
             cursor.execute(sql)
             
             result = cursor.fetchall()
+            conn.commit()  # 변경사항을 저장하기 위해 commit 필요
+            for res in result:
+                res['status'] = "CHANGED"
             return result
     except Exception as e:
         print(f"[ERROR] DB 조회 에러: {e}")
