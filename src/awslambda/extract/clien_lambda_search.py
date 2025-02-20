@@ -77,7 +77,7 @@ def search(event, context):
             print("body:", response.text)
             return  {
                 "status_code": 403, 
-                "body": "[WARNING] SEACH/clien 연결 실패"
+                "body": "[WARNING] SEARCH/clien 연결 실패"
             }
             break
 
@@ -89,7 +89,9 @@ def search(event, context):
         for post in posts_raw:
             
             created_at_str = post.find("span", class_="timestamp").text
-            created_at = datetime.strptime(created_at_str, "%Y-%m-%d %H:%M:%S")
+            created_at = datetime.strptime(created_at_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            created_at = created_at.astimezone(timezone(timedelta(hours=9)))
+
             if created_at < start_dt:
                 isNextPage = False
                 break

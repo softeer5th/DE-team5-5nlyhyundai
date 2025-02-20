@@ -25,7 +25,9 @@ BASIC_URL = "https://www.clien.net/service/search?q={query}&sort=recency&p={page
 CLIEN_URL = "https://www.clien.net"
 
 SEARCH_TABLE = "probe_clien"
+
 EXECUTOR_MAX = 20
+REMAINING_TIME_LIMIT = 60000 # ms, milli-second
 
 # 멀티스레드를 위한 설정
 analysis_executor = ThreadPoolExecutor(max_workers=EXECUTOR_MAX)
@@ -147,6 +149,9 @@ def detail(event, context):
         futures.append(analysis_executor.submit(analyze_post_with_gpt, post_data))
         executing += 1
         #time.sleep(REQUEST_REST)
+        
+        if context.get_remaining_time_in_millis() < REMAINING_TIME_LIMIT:
+            break
 
         # as_completed를 Request_rest만큼 대기
         try:
