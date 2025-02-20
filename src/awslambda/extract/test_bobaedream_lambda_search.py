@@ -180,7 +180,7 @@ def lambda_handler(event, context):
     # 게시글 시작 날짜
     start_date = event.get('start_date')
     if start_date is None:
-        start_dt = checked_at - timedelta(hours=6)
+        start_dt = checked_at - timedelta(days=14)
     else:
         start_dt = datetime.strptime(start_date, '%Y-%m-%d')
         # start_dt = start_dt.replace(tzinfo=timezone.utc)  # UTC로 변환
@@ -203,7 +203,7 @@ def lambda_handler(event, context):
         if html is None:
             return {
                 "status_code": 403,
-                "body": "[WARNING] SEARCH / 보배드림(platform으로 대체) IP 차단됨!"
+                "body": "[WARNING] SEARCH / 보배드림 IP 차단됨!"
             }
         result = parse_search(html, start_dt=start_dt, end_dt=end_dt, checked_at=checked_at, keyword=keyword)   
         if result == 404:

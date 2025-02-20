@@ -94,7 +94,7 @@ def parse_post_meta(post, post_meta):
     post['dislike'] = None
     post['created_at'] = posting_datetime
 
-def parse_detail(total_rows:int = 20):
+def parse_detail(total_rows:int = 1):
     # -> Union[List[Dict] | int | None]
     """
     검색 결과의 각 게시물에 대해 상세 정보를 파싱하여 추가합니다.
@@ -105,6 +105,7 @@ def parse_detail(total_rows:int = 20):
     Returns:
         상세 정보가 추가된 게시물 목록
     """
+    lambda_time = time.time()
     headers = {
         # 'User-Agent': UserAgent,
         'Host': 'www.bobaedream.co.kr',
@@ -118,208 +119,207 @@ def parse_detail(total_rows:int = 20):
     conn = get_db_connection()
     if conn is None:
         print("[ERROR] DB 연결 실패")
-        return 500
+        return 500, []
     
-    # DB에서 상세 정보를 가져올 게시물 목록
+    payloads = []
+    current_batch = []
+    BATCH_SIZE = 50
+    
+    status_code = 200
     table_name = 'probe_bobae'
     while True:
-        details = get_details_to_parse(conn, table_name, total_rows=total_rows)
-        if details is None:
+        if time.time() - lambda_time > 810:
+            print("[INFO] 람다 함수 시간 초과")
+            status_code = 408
+            break
+        
+        # DB에서 상세 정보를 가져올 게시물 목록
+        post = get_details_to_parse(conn, table_name, total_rows=total_rows)
+        if post is None:
             print("[ERROR] DB 조회 실패")
-            return 500
+            status_code = 500
+            break
         
-        if details == []:
+        if post == []:
             print("[INFO] 파싱할 게시물이 없습니다.")
-            return 204
-        
-        payloads = []
-        current_batch = []
-        BATCH_SIZE = min(50, len(details))
+            status_code = 204
+            break
+    
+        try:
+            post_url = post['url']
+            print(f"요청 플랫폼: 보배드림 / '{post_url}' 검색 중...")
 
-        for post in details:
+            response = requests.get(
+                    post_url,
+                    headers=headers
+                )
+            response.encoding = 'utf-8'
+
+            if response.status_code != 200:
+                print(f"[ERROR] 확인 필요! status code: {response.status_code}")
+                if response.status_code == 403:
+                    print(f"IP 차단됨! {response.status_code}")
+                    update_status_banned(conn, table_name, post['url'])
+                status_code = response.status_code
+                break
+
+            # 상세 페이지 요청
+            time.sleep(1 + random.random())
+                    
+            soup = BeautifulSoup(response.text, 'html.parser')
+            # 댓글이 없는 경우를 위한 처리
+            has_comment = True
             try:
-                post_url = post['url']
-                print(f"요청 플랫폼: 보배드림 / '{post_url}' 검색 중...")
-
-                # 상세 페이지 요청
-                time.sleep(1 + random.random())
-                response = requests.get(
-                        post_url,
-                        headers=headers
-                    )
-                response.encoding = 'utf-8'
-
-                # cookies = response.cookies
-                # response_headers = response.headers
-
-                if response.status_code != 200:
-                    print(f"[ERROR] 확인 필요! status code: {response.status_code}")
-                    if response.status_code == 403:
-                        print(f"IP 차단됨! {response.status_code}")
-                        update_status_banned(conn, table_name, post['url'])
-                    return 403, payloads
-                        
-                soup = BeautifulSoup(response.text, 'html.parser', from_encoding='utf-8')
-                # 댓글이 없는 경우를 위한 처리
-                has_comment = True
-                try:
-                    comment_list = soup.find('div', id='cmt_list').find('ul', class_='basiclist').find_all('li')
-                    comment_count = len(comment_list)
-                except Exception as e:
-                    print(f"[INFO] 댓글이 없습니다. {e} / post_url: {post_url}")
-                    has_comment = False
-                    comment_count = 0
-                finally:
-                    post['comment_count'] = comment_count
-
-                # 본문 내용 파싱
-                content_element = soup.find('div', class_='bodyCont')
-                try:
-                    cleaned_content = content_element.text.strip().replace('\xa0', ' ')
-                    cleaned_content = linebreak_ptrn.sub('\n', cleaned_content)
-                    post['content'] = cleaned_content
-                except Exception as e:
-                    print(f"[ERROR] 본문 내용 파싱 실패: {e}")
-                    continue
-                try:
-                    post_meta = soup.find('div', class_='writerProfile').find('dl')
-                except Exception as e:
-                    print(f"[ERROR] 포스팅 메타데이터 파싱 실패: {e}")
-                    post_meta = None
-                    continue
-                if post_meta is None:
-                    print("[ERROR] 포스팅 메타데이터 파싱 실패.")
-                else:
-                    # 포스팅 메타데이터 파싱
-                    parse_post_meta(post, post_meta)
-                
-                # 댓글 처리
-                comment_data = []
-                if has_comment:
-                    for comment in comment_list: # 
-                        if "삭제된 댓글입니다" in comment.text:
-                            comment_data.append({
-                                'created_at': None,
-                                'content': None,
-                                'like': None,
-                                'dislike': None
-                            })
-                            continue
-                        try:
-                            comment_meta = comment.find('dl').find('dt').find_all('span')
-                        except Exception as e:
-                            print(f"[ERROR] 댓글 메타데이터 파싱 실패: {e}")
-                            continue
-                        
-                        if comment_meta is None:
-                            print("[ERROR] 댓글 메타데이터 파싱 실패.")
-                            continue
-                        try:
-                            # comment_name = comment_meta[1].text
-                            comment_date = datetime.strptime(comment_meta[3].text, '%y.%m.%d %H:%M')
-                            comment_content = comment.find('dd').text.strip()
-                            comment_like_dislike = comment.find('div', class_='updownbox').find_all('dd')
-                            comment_like = comment_like_dislike[0].text.replace('추천 ', '') 
-                            comment_dislike = comment_like_dislike[1].text.replace('반대 ', '')
-                            comment_data.append({
-                                'created_at': comment_date,
-                                'content': comment_content,
-                                'like': comment_like,
-                                'dislike': comment_dislike
-                            })
-                        except Exception as e:
-                            print(f"[ERROR] 댓글 파싱 실패: {e}")
-                            continue
-                payload = {
-                    'checked_at': post['checked_at'],
-                    'platform': 'bobaedream',
-                    'title': post['title'],
-                    'post_id': post['post_id'],
-                    'url': post['url'],
-                    'content': post['content'],
-                    'view': post['view'],
-                    'created_at': post['created_at'],
-                    'like': post['like'],
-                    'dislike': post['dislike'],
-                    'comment_count': post['comment_count'],
-                    'keywords': post['keywords'],
-                    'comment': comment_data,
-                    'status': 'UNCHANGED',
-                }       
-                
-                post['status'] = 'UNCHANGED'
-                
-                # 모든 포스트에 대해 분석 작업 제출
-                future = analysis_executor.submit(analyze_post, payload)
-                current_batch.append(future)
-                # 완료된 작업들의 결과를 수집
-                if len(current_batch) >= BATCH_SIZE:
-                    print(f"배치 처리 시작 (크기: {len(current_batch)})")
-                    batch_results = process_batch(current_batch)
-                    payloads.extend(batch_results)
-                    current_batch = []
-
-                is_success = update_changed_stats(conn, table_name, post['url'], post['comment_count'], post['view'], post['created_at'])            
-                if is_success:
-                    print(f"[INFO] {post['url']} 업데이트 성공")
-                else:
-                    print(f"[INFO] {post['url']} 업데이트 실패")
-                
+                comment_list = soup.find('div', id='cmt_list').find('ul', class_='basiclist').find_all('li')
+                comment_count = len(comment_list)
             except Exception as e:
-                post['status'] = 'FAILED'
-                payloads.append({
-                    'status': 'FAILED',
-                })
-                update_status_failed(conn, table_name, post['url'])
-                print(f"[ERROR] {post['url']} 업데이트 실패 / 이유: {e}")    
+                print(f"[INFO] 댓글이 없습니다. {e} / post_url: {post_url}")
+                has_comment = False
+                comment_count = 0
+            finally:
+                post['comment_count'] = comment_count
 
-        # 마지막 배치 처리
-        if current_batch:
-            print(f"마지막 배치 처리 (크기: {len(current_batch)})")
-            batch_results = process_batch(current_batch)
-            payloads.extend(batch_results)
+            # 본문 내용 파싱
+            content_element = soup.find('div', class_='bodyCont')
+            try:
+                cleaned_content = content_element.text.strip().replace('\xa0', ' ')
+                cleaned_content = linebreak_ptrn.sub('\n', cleaned_content)
+                post['content'] = cleaned_content
+            except Exception as e:
+                print(f"[ERROR] 본문 내용 파싱 실패: {e}")
+                continue
+            try:
+                post_meta = soup.find('div', class_='writerProfile').find('dl')
+            except Exception as e:
+                print(f"[ERROR] 포스팅 메타데이터 파싱 실패: {e}")
+                post_meta = None
+                continue
+            if post_meta is None:
+                print("[ERROR] 포스팅 메타데이터 파싱 실패.")
+            else:
+                # 포스팅 메타데이터 파싱
+                parse_post_meta(post, post_meta)
             
-        return [payload for payload in payloads if payload['status'] == 'UNCHANGED']
+            # 댓글 처리
+            comment_data = []
+            if has_comment:
+                for comment in comment_list: # 
+                    if "삭제된 댓글입니다" in comment.text:
+                        comment_data.append({
+                            'created_at': None,
+                            'content': None,
+                            'like': None,
+                            'dislike': None
+                        })
+                        continue
+                    try:
+                        comment_meta = comment.find('dl').find('dt').find_all('span')
+                    except Exception as e:
+                        print(f"[ERROR] 댓글 메타데이터 파싱 실패: {e}")
+                        continue
+                    
+                    if comment_meta is None:
+                        print("[ERROR] 댓글 메타데이터 파싱 실패.")
+                        continue
+                    try:
+                        # comment_name = comment_meta[1].text
+                        comment_date = datetime.strptime(comment_meta[3].text, '%y.%m.%d %H:%M')
+                        comment_content = comment.find('dd').text.strip()
+                        comment_like_dislike = comment.find('div', class_='updownbox').find_all('dd')
+                        comment_like = comment_like_dislike[0].text.replace('추천 ', '') 
+                        comment_dislike = comment_like_dislike[1].text.replace('반대 ', '')
+                        comment_data.append({
+                            'created_at': comment_date,
+                            'content': comment_content,
+                            'like': comment_like,
+                            'dislike': comment_dislike
+                        })
+                    except Exception as e:
+                        print(f"[ERROR] 댓글 파싱 실패: {e}")
+                        continue
+            payload = {
+                'checked_at': post['checked_at'],
+                'platform': 'bobaedream',
+                'title': post['title'],
+                'post_id': post['post_id'],
+                'url': post['url'],
+                'content': post['content'],
+                'view': post['view'],
+                'created_at': post['created_at'],
+                'like': post['like'],
+                'dislike': post['dislike'],
+                'comment_count': post['comment_count'],
+                'keywords': post['keywords'],
+                'comment': comment_data,
+                'status': 'UNCHANGED',
+            }       
+            
+            post['status'] = 'UNCHANGED'
+            
+            # 모든 포스트에 대해 분석 작업 제출
+            future = analysis_executor.submit(analyze_post, payload)
+            current_batch.append(future)
+            # 완료된 작업들의 결과를 수집
+            if len(current_batch) >= BATCH_SIZE:
+                print(f"배치 처리 시작 (크기: {len(current_batch)})")
+                batch_results = process_batch(current_batch)
+                payloads.extend(batch_results)
+                current_batch = []
+
+            is_success = update_changed_stats(conn, table_name, post['url'], post['comment_count'], post['view'], post['created_at'])            
+            if is_success:
+                print(f"[INFO] {post['url']} 업데이트 성공")
+            else:
+                print(f"[INFO] {post['url']} 업데이트 실패")
+            
+        except Exception as e:
+            post['status'] = 'FAILED'
+            payloads.append({
+                'status': 'FAILED',
+            })
+            update_status_failed(conn, table_name, post['url'])
+            print(f"[ERROR] {post['url']} 업데이트 실패 / 이유: {e}")    
+
+    # 마지막 배치 처리
+    if current_batch:
+        print(f"마지막 배치 처리 (크기: {len(current_batch)})")
+        batch_results = process_batch(current_batch)
+        payloads.extend(batch_results)
+    payloads = [payload for payload in payloads if payload['status'] == 'UNCHANGED']
+    if payloads:
+        print(f"[INFO] 변경된 데이터가 {len(payloads)} 건 있습니다.")
+    else:
+        status_code = 201
+    return status_code, payloads
         
 
 def lambda_handler(event, context):
     # python -m bobaedream.bobaedream_exec 로 실행
-    total_rows = event.get("total_rows", 50)
+    total_rows = event.get("total_rows", 1)
+    id = event.get("id")
+
     get_my_ip()
     table_name = 'probe_bobae'
-    details_data = parse_detail(total_rows)
+    status_code, details_data = parse_detail(total_rows)
     if details_data == 500:
         return {
             "status_code": 500,
             "body": "[ERROR] DETAIL / DB 연결 실패"
         }
-    if details_data == 204:
-        return {
-            "status_code": 204,
-            "body": "[INFO] DETAIL / 파싱할 데이터가 없습니다."
-        }
     elif details_data == []:
         return {
             "status_code": 201,
-            "body": "[INFO] DETAIL / 업데이트할 데이터가 없습니다."
+            "body": "[INFO] DETAIL / S3에 업데이트할 데이터가 없습니다."
         }
+    
     try:
         checked_at_dt = details_data[0]['checked_at']
         save_s3_bucket_by_parquet(
             checked_at_dt=checked_at_dt,
             platform="bobaedream", 
-            data=details_data
+            data=details_data,
+            id=id
         )
-        status_code = 200
-        if isinstance(details_data, tuple) and details_data[0] == 403:
-            status_code = details_data[0]
-            details_data = details_data[1]
-            print("[WARNING] DETAIL / 보배드림 IP 차단됨!")
-        if status_code == 403:
-            return {
-                "status_code": 403,
-                "body": f"[WARNING] DETAIL / IP 차단됨 / 크롤링 데이터: {len(details_data)} 건"
-            }
         return {
             "status_code": 200,
             "body": f"[INFO] S3 저장 완료: {len(details_data)} 건"
@@ -329,8 +329,20 @@ def lambda_handler(event, context):
         conn = get_db_connection()
         if details_data:
             for detail in details_data:
-                update_status_failed(conn, table_name, detail["url"])
+                update_status_changed(conn, table_name, detail["url"])
         return {
             "status_code": 500,
             "body": "[ERROR] S3 저장 실패"
         }
+    finally:
+        if status_code == 403:
+            return {
+                "status_code": 403,
+                "body": f"[WARNING] DETAIL / IP 차단됨 / 크롤링 데이터: {len(details_data)} 건"
+            }
+        elif status_code == 408:
+            return {
+                "status_code": 408,
+                "body": f"[WARNING] DETAIL / 람다 함수 시간 초과 / 크롤링 데이터: {len(details_data)} 건"
+            }
+        
