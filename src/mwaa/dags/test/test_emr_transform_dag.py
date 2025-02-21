@@ -4,11 +4,15 @@ from airflow.providers.amazon.aws.sensors.s3 import S3KeySensor
 from airflow import DAG
 from datetime import datetime, timedelta
 from airflow.decorators import task
+import json
+from typing import List, Dict
+from datetime import timezone
+from airflow.operators.python import PythonOperator
 from airflow.models import Variable
 
 @task
 def checked_at_checker(checked_at:str):
-    print("[INFO] EMR transform dag 시작")
+    print("[INFO] EMR transform dag 시작 및 형변환")
     checked_at = datetime.strptime(checked_at, "%Y-%m-%dT%H:%M:%S") + timedelta(hours=9)  # UTC+9 (KST)
     checked_at = checked_at.strftime("%Y-%m-%dT%H:%M:%S")
     print(f'크롤링 시작 시간: {checked_at}')
@@ -27,9 +31,9 @@ default_args = {
 }
 
 with DAG(
-    'emr_transform_dag',
+    'test_emr_transform_dag',
     default_args=default_args,
-    description='Triggered by lambda_to_s3_workflow',
+    description='[TEST] Triggered by lambda_to_s3_workflow',
     schedule_interval=None,
     catchup=False
 ) as dag:
@@ -40,7 +44,7 @@ with DAG(
     # checked_at = datetime.strptime("2024-07-31T06:00:00", "%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%dT%H:%M:%S")
     
     # 시간 처리
-    checked_at = checked_at_checker(checked_at) # 한국 시간 기준
+    checked_at = checked_at_checker(checked_at)
 
     # EMR 작업에서 사용
     emr_task = EmrAddStepsOperator(

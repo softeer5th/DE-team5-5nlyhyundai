@@ -23,11 +23,34 @@ default_args = {
     'email_on_retry': False,
     'retries': 1,
     'retry_delay': timedelta(seconds=30),  # 빠른 재시도를 위해 30초로 설정
-    'execution_timeout': timedelta(minutes=15)  # 5분 제한 설정
+    'execution_timeout': timedelta(minutes=30)  # 5분 제한 설정
 }
 
+@task(task_id='set_checked_start_end_date')
+def set_checked_start_end_date(**context):
+    """
+    테스트를 위하여 시간을 설정합니다.
+
+    checked_at, start_date, end_date
+    """
+    print(f"[INFO] 타입: {type(Variable.get('checked_at'))}")
+    print(f"[INFO] checked_at: {Variable.get('checked_at')}")
+    checked_at = datetime.strptime(Variable.get('checked_at'), '%Y-%m-%dT%H:%M:%S')
+    start_date = datetime.strptime(Variable.get('start_date'), '%Y-%m-%d')
+    end_date = datetime.strptime(Variable.get('end_date'), '%Y-%m-%d')
+    checked_at = datetime.strftime(checked_at, '%Y-%m-%dT%H:%M:%S')
+    start_date = datetime.strftime(start_date, '%Y-%m-%d')
+    end_date = datetime.strftime(end_date, '%Y-%m-%d')
+    print(f"[INFO] checked_at: {checked_at}")
+    print(f"[INFO] start_date: {start_date}")
+    print(f"[INFO] end_date: {end_date}")
+    context['task_instance'].xcom_push(key='checked_at', value=checked_at)
+    context['task_instance'].xcom_push(key='start_date', value=start_date)
+    context['task_instance'].xcom_push(key='end_date', value=end_date)
+    
+    
 @task
-def generate_lambda_search_configs(checked_at, **context) -> List[Dict]:
+def generate_lambda_search_configs(**context) -> List[Dict]:
     """Lambda 함수 설정을 생성
     
     Args:
@@ -73,6 +96,10 @@ def generate_lambda_search_configs(checked_at, **context) -> List[Dict]:
     
     keywords = _get_keyword_from_rds()
 
+    checked_at = context['task_instance'].xcom_pull(task_ids='set_checked_start_end_date', key='checked_at')
+    start_date = context['task_instance'].xcom_pull(task_ids='set_checked_start_end_date', key='start_date')
+    end_date = context['task_instance'].xcom_pull(task_ids='set_checked_start_end_date', key='end_date')
+
     lambda_search_configs = []
     function_names_str = Variable.get('LAMBDA_SEARCH_FUNC')
     function_names = function_names_str.split(",")
@@ -87,7 +114,8 @@ def generate_lambda_search_configs(checked_at, **context) -> List[Dict]:
                 'payload': json.dumps({
                     'checked_at': checked_at,
                     'keyword': keyword,
-                    # 'start_date': '2025-02-01',
+                    'start_date': start_date,
+                    'end_date': end_date,
                 })
             })
     print(f"총 search 람다 갯수 : {len(lambda_search_configs)}")
@@ -145,6 +173,7 @@ def generate_lambda_detail_configs() -> List[dict]:
     lambda_detail_configs = []
     function_names_str = Variable.get('LAMBDA_DETAIL_FUNC')
     function_names = function_names_str.split(",")
+    
     pg_hook = PostgresHook(postgres_conn_id='postgres_conn')
     # 결과: 튜플
     with pg_hook.get_conn() as conn:
@@ -181,18 +210,18 @@ def generate_lambda_detail_configs() -> List[dict]:
     return lambda_detail_configs
 
 with DAG(
-    'lambda_to_s3_workflow',
+    'test_lambda_to_s3_workflow',
     default_args=default_args,
-    description='Trigger Lambda functions and Load data to S3',
+    description='[TEST] Trigger Lambda functions and Load data to S3',
     schedule_interval=timedelta(minutes=60),
     catchup=False
 ) as dag:
     
-    checked_at = datetime.fromisoformat(datetime.now(timezone.utc).replace(tzinfo=None).isoformat(sep='T'))
-    checked_at = datetime.strftime(checked_at, '%Y-%m-%dT%H:%M:%S')
+    # checked_at = datetime.fromisoformat(datetime.now(timezone.utc).isoformat(sep='T'))
+    set_time_task = set_checked_start_end_date()
     # RDS에서 키워드 가져오기
-    lambda_search_configs = generate_lambda_search_configs(checked_at)
-    # lambda_search_configs = generate_lambda_search_configs(checked_at, start_date, end_date)
+    # lambda_search_configs = generate_lambda_search_configs(checked_at)
+    lambda_search_configs = generate_lambda_search_configs()
     # Dynamic task mapping!
     search_lambda_tasks = invoke_lambda.partial(invocation_type='RequestResponse', retries=3).expand(config=lambda_search_configs)
     
@@ -202,18 +231,16 @@ with DAG(
 
     trigger_second_dag = TriggerDagRunOperator(
         task_id='trigger_emr_dag',
-        trigger_dag_id='emr_transform_dag',
+        trigger_dag_id='test_emr_transform_dag',
         conf={
-            'from_dag': 'lambda_to_s3_workflow',
-            'checked_at': checked_at
+            'from_dag': 'test_lambda_to_s3_workflow',
+            'checked_at': "{{ task_instance.xcom_pull(task_ids='set_checked_start_end_date', key='checked_at') }}"
+            "{{ task_instance.xcom_pull(task_ids='hello', key='checked_at') }}"
         },
         wait_for_completion = False,
         trigger_rule='all_success'
     )
 
-    lambda_search_configs >> search_lambda_tasks 
+    set_time_task >> lambda_search_configs >> search_lambda_tasks 
     search_lambda_tasks  >> lambda_detail_configs >> detail_lambda_tasks
     detail_lambda_tasks >> trigger_second_dag
-
-
-    
