@@ -584,8 +584,9 @@ def save_s3_bucket_by_parquet(
         post['view'] = int(post['view'])
         post_comments = post.pop('comment', [])
         keywords = post.get('keywords', ["no_keyword"])
-        post['keywords'] = "|".join(keywords).replace(" ", "_")
-        joined_keywords = "-".join((keywords))
+        cleaned_keywords = [keyword.strip() for keyword in keywords]
+        joined_keywords = "-".join(cleaned_keywords)
+        post['keywords'] = joined_keywords
         keywords_posts[joined_keywords].append(post)
         # post_id를 기준으로 연결
         for comment in post_comments:
@@ -615,6 +616,7 @@ def save_s3_bucket_by_parquet(
         ('comment_count', pa.int64()),
         ('keywords', pa.string()),
         ('sentiment', pa.string()),
+        ('checked_at', pa.timestamp('s')),
     ])
 
     # 댓글 스키마 정의
@@ -625,6 +627,7 @@ def save_s3_bucket_by_parquet(
         ('dislike', pa.int64()),
         ('post_id', pa.string()),
         ('sentiment', pa.string()),
+        ('checked_at', pa.timestamp('s')),
     ])
 
     try:

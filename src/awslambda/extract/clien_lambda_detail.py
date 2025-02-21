@@ -64,7 +64,7 @@ def detail(event, context):
     # DB에서 상세 정보를 가져올 게시물 목록
     table_name = 'probe_clien'
 
-    timestamp = details[0]["checked_at"]
+    # timestamp = details[0]["checked_at"]
     
     while True:
         detail = get_details_to_parse(conn, table_name)
@@ -77,6 +77,7 @@ def detail(event, context):
         if detail == []:
             print("[INFO] 파싱할 게시물이 없습니다.")
             break
+        timestamp = detail['checked_at']
         
         post = detail # 이하 호환을 위해 변수 이름 변경(및 복사)
 
@@ -145,8 +146,8 @@ def detail(event, context):
         executing += 1
         #time.sleep(REQUEST_REST)
         
-        if context.get_remaining_time_in_millis() < REMAINING_TIME_LIMIT:
-            break
+        # if context.get_remaining_time_in_millis() < REMAINING_TIME_LIMIT:
+        #     break
 
         # as_completed를 Request_rest만큼 대기
         try:
