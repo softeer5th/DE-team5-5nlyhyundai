@@ -14,7 +14,9 @@ from bobaedream_utils import (
 from common_utils import (
     get_db_connection,
     upsert_post_tracking_data,
-    get_my_ip
+    get_my_ip,
+    get_proxy_ip,
+    return_proxy_ip,
 )
 linebreak_ptrn = re.compile(r'(\n){2,}')  # 줄바꿈 문자 매칭
 
@@ -47,6 +49,9 @@ def extract_bobaedream(start_date, page_num, keyword) -> Optional[str]:
     
     print(f"요청 플랫폼: 보배드림 / 페이지 {page_num}에서 '{keyword}' 검색 중...")
     time.sleep(1)
+    
+    get_db_connection() # common utils에 db connection을 만들기 위함
+        
     response = requests.post(
             'https://www.bobaedream.co.kr/search', 
             data=data,
@@ -54,16 +59,34 @@ def extract_bobaedream(start_date, page_num, keyword) -> Optional[str]:
         )
     # cookies = response.cookies
     # response_headers = response.headers
-    if response.status_code != 200:
-        print(f"확인 필요! status code: {response.status_code}")
-        if response.status_code == 403:
-            print(f"[WARNING] SEARCH / 보배드림 IP 차단됨! {response.status_code}")
+        if response.status_code == 200:
+        return response.text
+
+    print(f"확인 필요! status code: {response.status_code}")
+    while response.status_code != 403:
+        print(f"[INFO] SEARCH / 보배드림 IP 차단됨! {response.status_code} - 프록시 시도")
+        proxy = get_proxy_ip("bobaedream")
+        if proxy is None:
+            print(f"[WARNING] 기타 오류 / 더 이상 불러올 프록시가 없습니다.")
             return None
+        try:
+            response = requests.post(
+                'https://www.bobaedream.co.kr/search', 
+                data=data,
+                headers=headers,
+                proxies=proxy
+            )
+        except Exception as e:
+            print(f"[INFO] 프록시 오류 발생: {e}")
+            return_proxy_ip(proxy["http"], "bobaedream", isBanned=True, isTimeout=True)
         else:
-            print(f"[WARNING] 기타 오류 / {response.status_code}")
-            return None
+            return_proxy_ip(proxy["http"], "bobaedream", isBanned=response.status_code == 403, isTimeout=False)
     
-    return response.text
+    if response.status_code == 200:
+        return response.text
+    else:
+        print(f"[WARNING] 기타 오류 / {response.status_code}")
+        return None
 
 def parse_search(
         html, 

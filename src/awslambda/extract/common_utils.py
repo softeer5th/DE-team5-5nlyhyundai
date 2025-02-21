@@ -750,7 +750,143 @@ def analyze_post_with_gpt(post):
         return post  # 오류 발생 시 원본 데이터 반환
 
 
-if __name__ == "__main__":
-    db_conn = get_db_connection()
+"""
+Table "Proxy_ip"
+|-----|----------|------------|-------|--------------|
+| ip  | dcmotors | bobaedream | clien | availability |
+|-----|----------|------------|-------|--------------|
+| str | "NONE" or "USING" or "BANNED" | True/False   |
+|     | type: varchar(8)              | boolean type |
+|-----|----------|------------|-------|--------------|
+"""
 
+def update_proxy_table() -> bool:
+    """ip proxy table을 업데이트 하는 내부 함수입니다.
+    외부 사이트로부터 프록시 데이터를 받아와서 ip 테이블에 업데이트 합니다.
+    사용중인 IP는 우선 USING_TEMP로 바꾸고 이후 IP를 반환 받으면서 처리합니다.
 
+    Returns:
+        업데이트를 했는데 추가된 행이 없으면 False 반환
+        그렇지 않으면 True 반환
+    """
+    try:
+        # get the page
+        url = "https://free-proxy-list.net/#"
+        response = requests.get(url)
+        if response.status_code != 200:
+            print(f"updateProxyTable - Error! - status code:{response.status_code}")
+            return False
+        
+        # find ip by pattern
+        pattern = r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d+)"
+        matches = re.findall(pattern, str(response.content))
+        ips = [f"{ip}:{port}" for ip, port in matches]
+        
+        isUpdated = False
+        with db_conn.cursor() as cur:
+            # 각 IP에 대해 중복 체크 후 새로운 IP만 추가
+            for ip in ips:
+                if ip == "0.0.0.0:80":
+                    continue
+                # 중복 체크
+                cur.execute("""
+                    SELECT ip FROM proxy_ip WHERE ip = %s
+                """, (ip,))
+                
+                if cur.fetchone() is None:
+                    # 새로운 IP 추가
+                    cur.execute("""
+                        INSERT INTO proxy_ip (ip, dcmotors, bobaedream, clien, availability)
+                        VALUES (%s, 'NONE', 'NONE', 'NONE', TRUE)
+                    """, (ip,))
+                    isUpdated = True
+            
+            db_conn.commit()
+        return isUpdated
+        
+    except Exception as e:
+        print(f"[ERROR] 프록시 테이블 업데이트 실패: {e}")
+        traceback.print_exc()
+        return False
+
+def get_proxy_ip(platform: str) -> Optional[Dict[str, str]]:
+    """프록시 ip하나를 데이터 베이스로부터 얻어와 하나를 보내주는 함수입니다.
+    requests에서 사용하기 편하도록 딕셔너리 형태로 반환합니다.
+    가용 가능한 ip가 없으면 update proxy table 함수를 실행해서 새로운 ip를 얻습니다.
+
+    Args:
+        platform: 사용할 플랫폼 ('bobaedream' 또는 'clien')
+
+    Returns:
+        requests proxy 헤더 반환 딕셔너리 또는 None
+    """
+    try:
+        with db_conn.cursor() as cur:
+            # 플랫폼에 따른 컬럼 선택
+            platform = platform.lower()
+            if platform not in ['dcmotors', 'bobaedream', 'clien']:
+                raise ValueError("Invalid platform")
+                
+            # 사용 가능한 IP 찾기
+            cur.execute(f"""
+                UPDATE proxy_ip 
+                SET {platform} = 'USING'
+                WHERE ip = (
+                    SELECT ip 
+                    FROM proxy_ip 
+                    WHERE availability = TRUE 
+                    AND {platform} = 'NONE'
+                    LIMIT 1
+                )
+                RETURNING ip
+            """)
+            
+            result = cur.fetchone() # 무조건 딕셔너리
+            db_conn.commit()
+            
+            # 사용 가능한 IP가 없으면 새로운 IP들을 추가
+            if result is None:
+                if update_proxy_table():
+                    return get_proxy_ip(platform)  # 재귀적으로 다시 시도
+                return None
+                
+            return {
+                "http": result['ip'],
+                "https": result['ip']
+            }
+            
+    except Exception as e:
+        print(f"[ERROR] 프록시 IP 가져오기 실패: {e}")
+        traceback.print_exc()
+        return None
+
+def return_proxy_ip(ip: str, platform: str, isBanned: bool, isTimeout: bool) -> None:
+    """사용이 끝난 ip를 반환 받아 data table에 업데이트 합니다.
+
+    Args:
+        ip: 사용한 IP
+        platform: 사용한 플랫폼 ('dcmotors', 'bobaedream' 또는 'clien')
+        isBanned: 플랫폼 사이트 밴 여부
+        isTimeout: 프록시 IP 사용 가능 여부
+    """
+    try:
+        with db_conn.cursor() as cur:
+            if platform not in ['dcmotors', 'bobaedream', 'clien']:
+                raise ValueError("Invalid platform")
+                
+            # 상태 업데이트
+            status = "BANNED" if isBanned else "NONE"
+            
+            cur.execute(f"""
+                UPDATE proxy_ip 
+                SET 
+                    {platform} = %s,
+                    availability = %s
+                WHERE ip = %s
+            """, (status, not isTimeout, ip))
+            
+            db_conn.commit()
+            
+    except Exception as e:
+        print(f"[ERROR] 프록시 IP 반환 실패: {e}")
+        traceback.print_exc()

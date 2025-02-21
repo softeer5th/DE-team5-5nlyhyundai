@@ -16,6 +16,8 @@ from common_utils import (
     update_status_changed,
     update_status_unchanged,
     update_changed_stats,
+    get_proxy_ip,
+    return_proxy_ip
 )
 
 BASIC_URL = "https://www.clien.net/service/search?q={query}&sort=recency&p={page_num}&boardCd=&isBoard=false"
@@ -69,18 +71,36 @@ def search(event, context):
         }
 
         REQUEST_REST = 1 + random.random()
+
         print("try:", full_url)
+        
         response = requests.get(full_url, headers=headers, allow_redirects=False)
-        if response.status_code != 200:
-            print("status code:", response.status_code)
-            print("headers:", response.headers)
-            print("body:", response.text)
+        isBanned = response.status_code != 200
+        if isBanned:
+            print("[INFO] clienDetail: 기본 ip 차단, 프록시 ip 접속 시도")
+        while isBanned:
+            proxy = get_proxy_ip("clien")
+            if proxy is None:
+                #isBanned = True
+                break
+            try:
+                response = requests.get(full_url, headers=headers, proxies=proxy, allow_redirects=False)
+            except Exception as e:
+                print(f"[INFO] 프록시 오류 발생: {e}")
+                return_proxy_ip(proxy["http"], "clien", isBanned=True, isTimeout=True)
+                continue
+            isBanned = response.status_code != 200
+            return_proxy_ip(proxy["http"], "clien", isBanned, isTimeout=False)
+        
+
+        if isBanned:
             return  {
                 "status_code": 403, 
                 "body": "[WARNING] SEARCH/clien 연결 실패"
             }
             break
-
+        response.encoding = 'utf-8'
+        
         soup = BeautifulSoup(response.content, "html.parser")
         if not soup.find("a", class_="board-nav-page active"):
             break

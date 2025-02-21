@@ -51,3 +51,12 @@ CREATE TABLE IF NOT EXISTS crawling_metadata (
     comments_s3_path VARCHAR(1022),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')
 );
+
+-- 프록시 ip를 저장하고 크롤러에게 보내주기 위한 테이블
+CREATE TABLE IF NOT EXISTS proxy_ip (
+    IP VARCHAR(255) PRIMARY KEY,
+    dcmotors VARCHAR(8),
+    bobaedream VARCHAR(8),
+    clien VARCHAR(8),
+    Availability BOOLEAN
+);

@@ -26,6 +26,8 @@ from common_utils import (
     update_changed_stats,
     get_my_ip,
     analyze_post_with_gpt,
+    get_proxy_ip,
+    return_proxy_ip,
 )
 
 # 멀티스레드를 위한 설정
@@ -124,6 +126,7 @@ def parse_detail(total_rows:int = 1):
     payloads = []
     current_batch = []
     BATCH_SIZE = 50
+    PROXY_RETRY_CNT = 5 # 밴 당할 시 프록시로 재접속 시도 횟수
     
     status_code = 200
     table_name = 'probe_bobae'
@@ -148,6 +151,8 @@ def parse_detail(total_rows:int = 1):
         try:
             post_url = post['url']
             print(f"요청 플랫폼: 보배드림 / '{post_url}' 검색 중...")
+            isBanned = False    # 밴 당하면 True
+            """
             try:
                 response = requests.get(
                         post_url,
@@ -156,9 +161,37 @@ def parse_detail(total_rows:int = 1):
                     )
             except Exception as e:
                 print(f"[ERROR] 요청 실패: {e}")
-                print(f"아마 IP 차단됨! {response.status_code}")
+                print(f"아마 IP 차단됨! {response.status_code}, 프록시 접근 시도")    
+                # 프록시 접근 시도
+                isBanned = True
+            """
+            isBanned = True
+            proxy_try_cnt = 0
+            while isBanned and proxy_try_cnt < PROXY_RETRY_CNT:
+                proxy = get_proxy_ip("bobaedream")
+                if proxy is None:
+                    # isBanned True
+                    break
+                try:
+                    proxy_try_cnt += 1
+                    response = requests.get(
+                            post_url,
+                            headers=headers,
+                            timeout=10,
+                            proxies=proxy
+                        )
+                except Exception as e:
+                    print(f"[ERROR] 프록시 요청 실패: {e}")
+                else:
+                    isBanned = False
+                finally:
+                    return_proxy_ip(proxy["http"], "bobaedream", isBanned, isTimeout=False)
+            
+            if isBanned:
                 update_status_banned(conn, table_name, post['url'])
+                print(f"[ERROR] 페이지 접근 (프록시 사용) 실패")
                 continue
+
             response.encoding = 'utf-8'
 
             if response.status_code != 200:

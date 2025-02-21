@@ -19,10 +19,9 @@ from common_utils import (
     update_changed_stats,
     analyze_post_with_gpt,
     get_my_ip,
+    get_proxy_ip,
+    return_proxy_ip,
 )
-
-BASIC_URL = "https://www.clien.net/service/search?q={query}&sort=recency&p={page_num}&boardCd=&isBoard=false"
-CLIEN_URL = "https://www.clien.net"
 
 SEARCH_TABLE = "probe_clien"
 
@@ -37,7 +36,6 @@ def detail(event, context):
     lambda_id = event.get("id")
     
     get_my_ip()
-    timestamp = 0
     
     all_post = []
     futures = []
@@ -64,8 +62,6 @@ def detail(event, context):
     # DB에서 상세 정보를 가져올 게시물 목록
     table_name = 'probe_clien'
 
-    # timestamp = details[0]["checked_at"]
-    
     while True:
         detail = get_details_to_parse(conn, table_name)
         if detail is None:
@@ -77,25 +73,39 @@ def detail(event, context):
         if detail == []:
             print("[INFO] 파싱할 게시물이 없습니다.")
             break
-        timestamp = detail['checked_at']
         
         post = detail # 이하 호환을 위해 변수 이름 변경(및 복사)
+        checked_at = post["checked_at"]
 
         post_url = post["url"]
         REQUEST_REST = 1 + random.random()
         
         response = requests.get(post_url, headers=headers, allow_redirects=False)
-        print(f"{post_url} - {response.status_code}")
-        if response.status_code != 200:
-            print("headers:", response.headers)
-            print("body:", response.text)
-
-            update_status_banned(conn, table_name, post['url'])
+        isBanned = response.status_code != 200
+        if isBanned:
+            print("[INFO] clienDetail: 기본 ip 차단, 프록시 ip 접속 시도")
+        while isBanned:
+            proxy = get_proxy_ip("clien")
+            if proxy is None:
+                #isBanned = True
+                break
+            try:
+                response = requests.get(post_url, headers=headers, proxies=proxy, allow_redirects=False)
+            except Exception as e:
+                print(f"[INFO] 프록시 오류 발생: {e}")
+                return_proxy_ip(proxy["http"], "clien", isBanned=True, isTimeout=True)
+                continue
+            isBanned = response.status_code != 200
+            return_proxy_ip(proxy["http"], "clien", isBanned, isTimeout=False)
+        
+        if isBanned:
             return_dict["status_code"] = 403
             return_dict["body"] = "[WARNING] DETAIL/clien IP 차단"
+            update_status_banned(conn, table_name, post['url'])   
             break
-
-        update_status_unchanged(conn, table_name, post['url'])
+        
+        response.encoding = 'utf-8'
+        # update_status_unchanged(conn, table_name, post['url'])
         soup = BeautifulSoup(response.content, "html.parser")
 
         comments_raw = soup.find_all("div", class_="comment_row")
@@ -144,12 +154,14 @@ def detail(event, context):
         
         futures.append(analysis_executor.submit(analyze_post_with_gpt, post_data))
         executing += 1
-        #time.sleep(REQUEST_REST)
+        time.sleep(REQUEST_REST)
         
-        # if context.get_remaining_time_in_millis() < REMAINING_TIME_LIMIT:
-        #     break
+        if context.get_remaining_time_in_millis() < REMAINING_TIME_LIMIT:
+            print(f"[INFO] clien detail: 실행시간이 {REMAINING_TIME_LIMIT}ms 보다 덜 남아서 디테일 파싱을 중지합니다.")
+            break
 
         # as_completed를 Request_rest만큼 대기
+        # 일단 gpt 처리된 것은 처리
         try:
             for future in as_completed(futures, timeout=REQUEST_REST if executing < EXECUTOR_MAX else None):
                 try:
@@ -160,10 +172,10 @@ def detail(event, context):
                         update_changed_stats(conn, table_name, post_data['url'], post_data['comment_count'], post_data['view'], post_data['created_at'])
                         print(f"{post_data['url']} - Done!")
                 except Exception as e:
-                    print(f"Error processing post: {e}")
+                    print(f"CLIEN_Detail: Error processing post: {e}")
+                    break
         except TimeoutError:
             print("gpt timeout! get next page...")
-            continue
 
 
     for future in as_completed(futures):
@@ -175,17 +187,20 @@ def detail(event, context):
                 print(f"{post_data['url']} - Done!")
         except Exception as e:
             print(f"Error processing post: {e}")
-            
+
     if len(all_post) == 0:
         return return_dict
-    save_res = save_s3_bucket_by_parquet(timestamp, platform='clien', data=all_post, id=lambda_id)
+    save_res = save_s3_bucket_by_parquet(checked_at, platform='clien', data=all_post, id=lambda_id)
     if save_res is None:
         return {
             "status_code": 500,
             "body": "[FATAL ERROR] DETAIL / S3 저장 실패"
         }
-    return {
-        "status_code": 200,
-        "body": "[INFO] DETAIL / S3 저장 성공"
-    }
+    if return_dict["status_code"] != 204:
+        return return_dict
+    else:
+        return {
+            "status_code": 200,
+            "body": "[INFO] DETAIL / S3 저장 성공"
+        }
     
