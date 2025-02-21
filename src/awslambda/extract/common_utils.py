@@ -562,11 +562,8 @@ def save_s3_bucket_by_parquet(
     minute = str(checked_at_dt.minute)
 
     # 코멘트 데이터
-    keywords_posts = defaultdict(list)
-    keywords_comments = defaultdict(list)
-
+    comments = []
     for post in data:
-        # 코멘트 제거
         post.pop('id', None)
         post.pop('status', None)
         post.pop('checked_at', None)
@@ -582,17 +579,15 @@ def save_s3_bucket_by_parquet(
             post['dislike'] = None
         post['comment_count'] = int(post['comment_count'])
         post['view'] = int(post['view'])
+        # 코멘트 제거
         post_comments = post.pop('comment', [])
         keywords = post.get('keywords', ["no_keyword"])
         cleaned_keywords = [keyword.strip() for keyword in keywords]
         joined_keywords = "-".join(cleaned_keywords)
         post['keywords'] = joined_keywords
-        keywords_posts[joined_keywords].append(post)
         # post_id를 기준으로 연결
         for comment in post_comments:
-            comment['post_id'] = post['post_id']
             # 좋아요, 싫어요 수가 없는 경우 None으로 처리
-            comment['checked_at'] = checked_at_dt
             try:
                 comment['like'] = int(comment['like'])
             except:
@@ -601,7 +596,9 @@ def save_s3_bucket_by_parquet(
                 comment['dislike'] = int(comment['dislike'])
             except:
                 comment['dislike'] = None
-            keywords_comments[joined_keywords].append(comment)
+            comment['post_id'] = post['post_id']
+            comment['checked_at'] = checked_at_dt
+            comments.append(comment)
    # 게시물 스키마 정의
     posts_schema = pa.schema([
         ('platform', pa.string()),
@@ -632,25 +629,24 @@ def save_s3_bucket_by_parquet(
 
     try:
         conn = get_db_connection()
-        for keyword, posts in keywords_posts.items():
-            # Parquet로 변환
-            posts_table = pa.Table.from_pylist(posts, schema=posts_schema)
-            comments_table = pa.Table.from_pylist(keywords_comments[keyword], schema=comments_schema)
+        # Parquet로 변환
+        posts_table = pa.Table.from_pylist(data, schema=posts_schema)
+        comments_table = pa.Table.from_pylist(comments, schema=comments_schema)
 
-            # S3 업로드 경로 설정
-            s3_posts_key = f"{date}/{hour}/{minute}/{keyword}/{id}_{platform}_posts.parquet"
-            s3_comments_key = f"{date}/{hour}/{minute}/{keyword}/{id}_{platform}_comments.parquet"
+        # S3 업로드 경로 설정
+        s3_posts_key = f"{date}/{hour}/{minute}/{id}_{platform}_posts.parquet"
+        s3_comments_key = f"{date}/{hour}/{minute}/{id}_{platform}_comments.parquet"
 
-            # 게시물 데이터 업로드
-            with smart_open.open(f"s3://{S3_BUCKET}/{s3_posts_key}", "wb") as s3_file:
-                pq.write_table(posts_table, s3_file, compression='snappy')            
-            
-            # 댓글 데이터 업로드
-            with smart_open.open(f"s3://{S3_BUCKET}/{s3_comments_key}", "wb") as s3_file:
-                pq.write_table(comments_table, s3_file, compression='snappy')
-            
-            print(f"[INFO] S3 업로드 완료 (키워드: {keyword}): {s3_posts_key}, {s3_comments_key}")
-            log_crawling_metadata(conn, checked_at_dt, keyword, platform)
+        # 게시물 데이터 업로드
+        with smart_open.open(f"s3://{S3_BUCKET}/{s3_posts_key}", "wb") as s3_file:
+            pq.write_table(posts_table, s3_file, compression='snappy',)            
+        
+        # 댓글 데이터 업로드
+        with smart_open.open(f"s3://{S3_BUCKET}/{s3_comments_key}", "wb") as s3_file:
+            pq.write_table(comments_table, s3_file, compression='snappy')
+        
+        print(f"[INFO] S3 업로드 완료: {s3_posts_key}, {s3_comments_key}")
+        log_crawling_metadata(conn, checked_at_dt, "no_keyword", platform)
 
         return True
         

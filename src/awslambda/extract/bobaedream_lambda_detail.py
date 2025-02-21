@@ -148,11 +148,17 @@ def parse_detail(total_rows:int = 1):
         try:
             post_url = post['url']
             print(f"요청 플랫폼: 보배드림 / '{post_url}' 검색 중...")
-
-            response = requests.get(
-                    post_url,
-                    headers=headers
-                )
+            try:
+                response = requests.get(
+                        post_url,
+                        headers=headers,
+                        timeout=10,
+                    )
+            except Exception as e:
+                print(f"[ERROR] 요청 실패: {e}")
+                print(f"아마 IP 차단됨! {response.status_code}")
+                update_status_banned(conn, table_name, post['url'])
+                continue
             response.encoding = 'utf-8'
 
             if response.status_code != 200:
@@ -314,16 +320,19 @@ def lambda_handler(event, context):
     
     try:
         checked_at_dt = details_data[0]['checked_at']
-        save_s3_bucket_by_parquet(
+        res = save_s3_bucket_by_parquet(
             checked_at_dt=checked_at_dt,
             platform="bobaedream", 
             data=details_data,
             id=id
         )
-        return {
-            "status_code": 200,
-            "body": f"[INFO] S3 저장 완료: {len(details_data)} 건"
-        }
+        if res == True:
+            return {
+                "status_code": 200,
+                "body": f"[INFO] S3 저장 완료: {len(details_data)} 건"
+            }
+        else:
+            raise
     except Exception as e:
         print(f"[ERROR] S3 저장 실패: {e}")
         conn = get_db_connection()
