@@ -66,7 +66,7 @@ def setup_webdriver():
         print(f"❌ 웹드라이버 실행 실패: {str(e)}")
         raise e
 
-def crawl_post(driver, post):
+def crawl_post(driver, post, checked_at):
     """웹 크롤링 수행 후 데이터를 감성 분석으로 넘김"""
     try:
         url = post["url"]
@@ -108,6 +108,8 @@ def crawl_post(driver, post):
 
         # 🔹 크롤링 데이터 저장 후 즉시 감성 분석으로 넘김
         temp_post = {
+            "checked_at": checked_at,
+            "platform": "dcinside",
             "title": title,
             "post_id": post_id,
             "url": url,
@@ -118,7 +120,8 @@ def crawl_post(driver, post):
             "dislike": dislikes,
             "comment_count": comments_count,
             "comment": comments,
-            "keywords": keywords
+            "keywords": keywords,
+            "status": 'UNCHANGED'
         }
         
         print(f"✅ 크롤링 완료 및 감성 분석 시작: {url}")
@@ -161,7 +164,7 @@ def process_batch(futures: List) -> List[Dict]:
 def lambda_handler(event, context):
     id = event.get('id')
     checked_at = event.get('checked_at')
-    checked_at = datetime.fromisoformat(checked_at)
+    checked_at = datetime.strptime(checked_at, "%Y-%m-%dT%H:%M:%S")
 
     start_time = time.time()
     """AWS Lambda에서 실행되는 핸들러 함수"""
@@ -191,7 +194,7 @@ def lambda_handler(event, context):
         if post == [] :
             break
 
-        temp_post = crawl_post(driver, post)  # 크롤링과 동시에 감성 분석 스레드 실행
+        temp_post = crawl_post(driver, post, checked_at)  # 크롤링과 동시에 감성 분석 스레드 실행
 
         is_success = update_changed_stats(conn, table_name, post['url'], post['comment_count'], post['view'], post['created_at'])            
         if is_success:

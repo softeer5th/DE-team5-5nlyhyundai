@@ -94,7 +94,7 @@ def parse_post_meta(post, post_meta):
     post['dislike'] = None
     post['created_at'] = posting_datetime
 
-def parse_detail(total_rows:int = 1):
+def parse_detail(total_rows:int = 1, checked_at:datetime = datetime.now().replace(tzinfo=None)):
     # -> Union[List[Dict] | int | None]
     """
     검색 결과의 각 게시물에 대해 상세 정보를 파싱하여 추가합니다.
@@ -244,7 +244,7 @@ def parse_detail(total_rows:int = 1):
                         print(f"[ERROR] 댓글 파싱 실패: {e}")
                         continue
             payload = {
-                'checked_at': post['checked_at'],
+                'checked_at': checked_at,
                 'platform': 'bobaedream',
                 'title': post['title'],
                 'post_id': post['post_id'],
@@ -304,11 +304,11 @@ def lambda_handler(event, context):
     total_rows = event.get("total_rows", 1)
     id = event.get("id")
     checked_at_dt = event.get("checked_at")
-    checked_at_dt = datetime.fromisoformat(checked_at_dt)
+    checked_at_dt = datetime.strptime(checked_at_dt, "%Y-%m-%dT%H:%M:%S")
 
     get_my_ip()
     table_name = 'probe_bobae'
-    status_code, details_data = parse_detail(total_rows)
+    status_code, details_data = parse_detail(total_rows, checked_at_dt)
     if details_data == 500:
         return {
             "status_code": 500,
@@ -321,7 +321,6 @@ def lambda_handler(event, context):
         }
     
     try:
-        checked_at_dt = details_data[0]['checked_at']
         res = save_s3_bucket_by_parquet(
             checked_at_dt=checked_at_dt,
             platform="bobaedream", 
