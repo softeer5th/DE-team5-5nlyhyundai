@@ -158,7 +158,7 @@ def parse_detail(total_rows:int = 1):
                 print(f"[ERROR] 요청 실패: {e}")
                 print(f"아마 IP 차단됨! {response.status_code}")
                 update_status_banned(conn, table_name, post['url'])
-                continue
+                break
             response.encoding = 'utf-8'
 
             if response.status_code != 200:
@@ -303,6 +303,8 @@ def lambda_handler(event, context):
     # python -m bobaedream.bobaedream_exec 로 실행
     total_rows = event.get("total_rows", 1)
     id = event.get("id")
+    checked_at_dt = event.get("checked_at")
+    checked_at_dt = datetime.fromisoformat(checked_at_dt)
 
     get_my_ip()
     table_name = 'probe_bobae'

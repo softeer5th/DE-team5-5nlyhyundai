@@ -26,8 +26,8 @@ default_args = {
     'execution_timeout': timedelta(minutes=30)  # 5분 제한 설정
 }
 
-@task(task_id='set_checked_start_end_date')
-def set_checked_start_end_date(**context):
+@task(task_id='set_environment')
+def set_environment(**context):
     """
     테스트를 위하여 시간을 설정합니다.
 
@@ -96,9 +96,9 @@ def generate_lambda_search_configs(**context) -> List[Dict]:
     
     keywords = _get_keyword_from_rds()
 
-    checked_at = context['task_instance'].xcom_pull(task_ids='set_checked_start_end_date', key='checked_at')
-    start_date = context['task_instance'].xcom_pull(task_ids='set_checked_start_end_date', key='start_date')
-    end_date = context['task_instance'].xcom_pull(task_ids='set_checked_start_end_date', key='end_date')
+    checked_at = context['task_instance'].xcom_pull(task_ids='set_environment', key='checked_at')
+    start_date = context['task_instance'].xcom_pull(task_ids='set_environment', key='start_date')
+    end_date = context['task_instance'].xcom_pull(task_ids='set_environment', key='end_date')
 
     lambda_search_configs = []
     function_names_str = Variable.get('LAMBDA_SEARCH_FUNC')
@@ -120,16 +120,6 @@ def generate_lambda_search_configs(**context) -> List[Dict]:
             })
     print(f"총 search 람다 갯수 : {len(lambda_search_configs)}")
     return lambda_search_configs
-
-# def invoke_lambda_handler(config, context):
-#     task_id = config['task_id'] # config 사용
-#     response = context['ti'].xcom_pull(task_ids=task_id, key='response') # response key로 저장
-#     if response and response.get('status_code') == 403: # statusCode로 확인
-#         context['ti'].xcom_push(key=task_id, value=f"retry")
-#         raise AirflowException(f"[ERROR] Lambda {task_id} returned 403 / 크롤러 밴")
-#     if response and response.get('status_code') == 500: # statusCode로 확인
-#         context['ti'].xcom_push(key=task_id, value=f"retry")
-#         raise AirflowException(f"[ERROR] Lambda {task_id} returned 500 / DB 연결 오류")
 
 @task
 def invoke_lambda(config, retries:int, invocation_type='RequestResponse', **context):
@@ -164,7 +154,7 @@ def invoke_lambda(config, retries:int, invocation_type='RequestResponse', **cont
         raise  # Re-raise the exception to mark the task as failed
 
 @task(trigger_rule='all_success')
-def generate_lambda_detail_configs() -> List[dict]:
+def generate_lambda_detail_configs(**context) -> List[dict]:
     """
     Lambda 함수 중 detail을 설정을 생성하는 함수
     
@@ -195,6 +185,7 @@ def generate_lambda_detail_configs() -> List[dict]:
     crawler_counts = [math.ceil(v / detail_batch_size) for v in details_count]
 
     max_count = max(crawler_counts)
+    checked_at = context['task_instance'].xcom_pull(task_ids='set_environment', key='checked_at')
 
     # 라운드 로빈 방식으로 배치
     for idx in range(max_count):
@@ -204,7 +195,10 @@ def generate_lambda_detail_configs() -> List[dict]:
                     'function_name': function_name,
                     'task_id': f"invoke_lambda_{function_name}{idx}".replace(' ', '_'),
                     'func_id': idx,
-                    'payload': json.dumps({'id':f"invoke_lambda_{function_name}{idx}".replace(' ', '_')})
+                    'payload': json.dumps({
+                        'id':f"invoke_lambda_{function_name}{idx}".replace(' ', '_'),
+                        'checked_at': checked_at,
+                        })
                 })
     print(f"총 Detail 람다 갯수 : {len(lambda_detail_configs)}")
     return lambda_detail_configs
@@ -218,9 +212,8 @@ with DAG(
 ) as dag:
     
     # checked_at = datetime.fromisoformat(datetime.now(timezone.utc).isoformat(sep='T'))
-    set_time_task = set_checked_start_end_date()
+    set_environment_task = set_environment()
     # RDS에서 키워드 가져오기
-    # lambda_search_configs = generate_lambda_search_configs(checked_at)
     lambda_search_configs = generate_lambda_search_configs()
     # Dynamic task mapping!
     search_lambda_tasks = invoke_lambda.partial(invocation_type='RequestResponse', retries=3).expand(config=lambda_search_configs)
@@ -230,17 +223,16 @@ with DAG(
     detail_lambda_tasks = invoke_lambda.partial(invocation_type='RequestResponse', retries=3).expand(config=lambda_detail_configs)
 
     trigger_second_dag = TriggerDagRunOperator(
-        task_id='trigger_emr_dag',
+        task_id='trigger_test_emr_transform_dag',
         trigger_dag_id='test_emr_transform_dag',
         conf={
             'from_dag': 'test_lambda_to_s3_workflow',
-            'checked_at': "{{ task_instance.xcom_pull(task_ids='set_checked_start_end_date', key='checked_at') }}"
-            "{{ task_instance.xcom_pull(task_ids='hello', key='checked_at') }}"
+            'checked_at': "{{ task_instance.xcom_pull(task_ids='set_environment', key='checked_at') }}"
         },
         wait_for_completion = False,
         trigger_rule='all_success'
     )
 
-    set_time_task >> lambda_search_configs >> search_lambda_tasks 
+    set_environment_task >> lambda_search_configs >> search_lambda_tasks 
     search_lambda_tasks  >> lambda_detail_configs >> detail_lambda_tasks
     detail_lambda_tasks >> trigger_second_dag

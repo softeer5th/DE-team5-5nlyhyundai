@@ -1,4 +1,5 @@
 from airflow.providers.amazon.aws.operators.emr import EmrAddStepsOperator
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.providers.amazon.aws.sensors.emr import EmrStepSensor
 from airflow.providers.amazon.aws.sensors.s3 import S3KeySensor
 from airflow import DAG
@@ -11,12 +12,18 @@ from airflow.operators.python import PythonOperator
 from airflow.models import Variable
 
 @task
-def checked_at_checker(checked_at:str):
+def checked_at_checker(**context):
+    """
+        checked_at 한국 시간 변환
+    """
     print("[INFO] EMR transform dag 시작 및 형변환")
-    checked_at = datetime.strptime(checked_at, "%Y-%m-%dT%H:%M:%S") + timedelta(hours=9)  # UTC+9 (KST)
-    checked_at = checked_at.strftime("%Y-%m-%dT%H:%M:%S")
-    print(f'크롤링 시작 시간: {checked_at}')
-    return checked_at
+    checked_at = context['dag_run'].conf['checked_at']
+    context['task_instance'].xcom_push(key='checked_at', value=checked_at)
+    kst_checked_at = datetime.strptime(checked_at, "%Y-%m-%dT%H:%M:%S") + timedelta(hours=9)  # UTC+9 (KST)
+    kst_checked_at = checked_at.strftime("%Y-%m-%dT%H:%M:%S")
+    context['task_instance'].xcom_push(key='kst_checked_at', value=kst_checked_at)
+    print(f'크롤링 시작 시간 (KST 기준): {kst_checked_at}')
+    return kst_checked_at
 
 # DAG 기본 설정
 default_args = {
@@ -39,17 +46,15 @@ with DAG(
 ) as dag:
     # JOB_SCRIPT_PATH 설정. (s3://transform-emr/EMR.py)
 
-    # 이전 DAG에서 전달된 데이터 받기
-    checked_at = "{{ dag_run.conf['checked_at'] }}"
-    # checked_at = datetime.strptime("2024-07-31T06:00:00", "%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%dT%H:%M:%S")
     
     # 시간 처리
-    checked_at = checked_at_checker(checked_at)
+    # 이전 DAG에서 전달된 데이터 받기 (checked_at: dag_run.conf['checked_at'])
+    checked_at_task = checked_at_checker()
 
     # EMR 작업에서 사용
     emr_task = EmrAddStepsOperator(
         task_id='spark-job',
-        job_flow_id=Variable.get("emr_job_flow_id"),
+        job_flow_id=Variable.get("EMR_JOB_FLOW_ID"),
         aws_conn_id='aws_default',
         wait_for_completion=True,
         do_xcom_push=True, # if True, job_flow_id is pushed to XCom with key job_flow_id.        
@@ -66,7 +71,7 @@ with DAG(
                         '--conf', 'spark.task.maxFailures=4',     # Spark 태스크 레벨의 재시도 설정
                         '--conf', 'yarn.app.attempt.failure.validity.interval=10s',  # 2분 간격으로 설정
                         Variable.get("JOB_SCRIPT_PATH"), #'s3://transform-emr/EMR-2.py'
-                        '--checked_at', checked_at,
+                        '--checked_at', "{{ task_instance.xcom_pull(task_ids='checked_at_checker', key='kst_checked_at') }}",
                     ]
                 }
             }
@@ -75,21 +80,17 @@ with DAG(
         retries=2,  # 최대 재시도 횟수
         # 재시도 2*4 = 8회.
     )
-    # # EMR의 step이 잘 끝났는지 확인하기
-    # step_sensor = EmrStepSensor(
-    #     task_id = 'Step_Sensor',
-    #     job_flow_id = 'j-HIZRBHTSPUJX',
-    #     step_id = {{ task_instance.xcom_pull(task_ids="Spark Job", key="return_value")[0] }}',
-    #     aws_conn_id = 'aws_default'
-    # )
+    
+    trigger_s3_redshift_dag = TriggerDagRunOperator(
+    task_id='test_trigger_s3_redshift_dag',
+    trigger_dag_id='test_s3_redshift',
+    conf={
+        'from_dag': 'test_emr_transform_dag',
+        'checked_at': "{{ task_instance.xcom_pull(task_ids='set_checked_start_end_date', key='checked_at') }}"
+    },
+    wait_for_completion = False,
+    trigger_rule='all_success'
+    )
 
-    # s3_sensor = S3KeySensor(
-    #     task_id='s3_sensor',
-    #     bucket_name='transform-emr',
-    #     bucket_key='output.parquet/',
-    #     wildcard_match=True,
-    #     timeout=3*60,  # 3분
-    #     poke_interval=10,  # 1분
-    # )
+    checked_at_task >> emr_task >> trigger_s3_redshift_dag
 
-    checked_at >> emr_task
