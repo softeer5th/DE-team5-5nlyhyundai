@@ -25,26 +25,35 @@ default_args = {
     'execution_timeout': timedelta(minutes=15)  # 5분 제한 설정
 }
 
-def get_details_count(**context) -> List[str]:
+@task(task_id='check_task_env')
+def check_task_env(**context):
     """
-    detail 단계에서 처리할 url들을 가져옵니다.
-    """
-    pg_hook = PostgresHook(postgres_conn_id='postgres_conn')
-    with pg_hook.get_conn() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute('''
-                        SELECT 
-                            (SELECT COUNT(*) FROM probe_bobae WHERE status != 'UNCHANGED') as bobae_count,
-                            (SELECT COUNT(*) FROM probe_clien WHERE status != 'UNCHANGED') as clien_count,
-                            (SELECT COUNT(*) FROM probe_dcmotors WHERE status != 'UNCHANGED') as dc_count
-                        ''')
-        
-            details_count = cursor.fetchone()  # fetchall() 대신 fetchone() 사용
-    print("변경된 데이터 개수")
-    print(f"보배: {details_count['bobae_count']}, 클리앙: {details_count['clien_count']}, 디시인사이드: {details_count['dc_count']}")        
-    context['task_instance'].xcom_push(key='details_count', value=details_count)
-    return details_count
+    테스트를 위하여 시간을 설정합니다.
 
+    checked_at, start_date, end_date
+    """
+    print(f"[INFO] ENVIRONMENT: {type(Variable.get('ENVIRONMENT'))}")
+    if Variable.get('ENVIRONMENT') == 'PROD':
+        print(f"[INFO] PROD 환경에서 실행합니다.")
+        checked_at = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(sep='T') + timedelta(hours=9) # UTC+9
+        start_date = checked_at - timedelta(days=3) # 3일 전부터
+        end_date = checked_at + timedelta(days=1) # 하루 뒤까지 (반드시 오늘까지 포함)
+        checked_at = checked_at - timedelta(hours=9) # UTC+0
+    else:
+        print(f"[INFO] DEV 환경에서 실행합니다.")
+        print(f"[INFO] UTC+0기준 checked_at: {Variable.get('checked_at')}")
+        checked_at = datetime.strptime(Variable.get('checked_at'), '%Y-%m-%dT%H:%M:%S')
+        checked_at = datetime.strftime(checked_at, '%Y-%m-%dT%H:%M:%S')
+        start_date = datetime.strptime(Variable.get('start_date'), '%Y-%m-%d')
+        start_date = datetime.strftime(start_date, '%Y-%m-%d')
+        end_date = datetime.strptime(Variable.get('end_date'), '%Y-%m-%d')
+        end_date = datetime.strftime(end_date, '%Y-%m-%d')
+    print(f"[INFO] UTC+0 기준 checked_at: {checked_at}")
+    print(f"[INFO] UTC+9 기준 start_date: {start_date}")
+    print(f"[INFO] UTC+9 기준 end_date: {end_date}")
+    context['task_instance'].xcom_push(key='checked_at', value=checked_at)
+    context['task_instance'].xcom_push(key='start_date', value=start_date)
+    context['task_instance'].xcom_push(key='end_date', value=end_date)
 
 @task
 def generate_lambda_search_configs(checked_at, **context) -> List[Dict]:

@@ -158,7 +158,7 @@ def parse_detail(total_rows:int = 1):
                 print(f"[ERROR] 요청 실패: {e}")
                 print(f"아마 IP 차단됨! {response.status_code}")
                 update_status_banned(conn, table_name, post['url'])
-                continue
+                break
             response.encoding = 'utf-8'
 
             if response.status_code != 200:
