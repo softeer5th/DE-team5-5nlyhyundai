@@ -35,9 +35,10 @@ analysis_executor = ThreadPoolExecutor(max_workers=EXECUTOR_MAX)
 def detail(event, context):
 # parameters
     lambda_id = event.get("id")
+    checked_at = event.get("checked_at")
+    checked_at = datetime.fromisoformat(checked_at)
     
     get_my_ip()
-    timestamp = 0
     
     all_post = []
     futures = []
@@ -64,8 +65,6 @@ def detail(event, context):
     # DB에서 상세 정보를 가져올 게시물 목록
     table_name = 'probe_clien'
 
-    # timestamp = details[0]["checked_at"]
-    
     while True:
         detail = get_details_to_parse(conn, table_name)
         if detail is None:
@@ -77,7 +76,6 @@ def detail(event, context):
         if detail == []:
             print("[INFO] 파싱할 게시물이 없습니다.")
             break
-        timestamp = detail['checked_at']
         
         post = detail # 이하 호환을 위해 변수 이름 변경(및 복사)
 
@@ -178,7 +176,7 @@ def detail(event, context):
             
     if len(all_post) == 0:
         return return_dict
-    save_res = save_s3_bucket_by_parquet(timestamp, platform='clien', data=all_post, id=lambda_id)
+    save_res = save_s3_bucket_by_parquet(checked_at, platform='clien', data=all_post, id=lambda_id)
     if save_res is None:
         return {
             "status_code": 500,
@@ -188,4 +186,3 @@ def detail(event, context):
         "status_code": 200,
         "body": "[INFO] DETAIL / S3 저장 성공"
     }
-    
