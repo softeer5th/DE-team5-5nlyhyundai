@@ -188,7 +188,11 @@ def upsert_post_tracking_data(
                         payload['keyword'],
                     )
                 )
-            else:                
+            else:  # if exists
+                #  probe_bobae면 더 적게 보여주기...?
+                # if table_name == "probe_bobae":
+                #     payload['checked_at'] < result['created_at'] - 1 day
+
                 assert isinstance(payload['status'], str), "status는 문자열이어야 합니다."
                 unstable_status = payload['status'] in ["FAILED", "BANNED"]
                 if unstable_status:
@@ -262,11 +266,16 @@ def get_details_to_parse(
             sql = f"""
             UPDATE {table_name}
             SET status = 'UNCHANGED'
-            WHERE status = 'CHANGED'
-            AND id IN (
+            WHERE (
+                status = 'CHANGED'
+                OR (status = 'BANNED' and NOW() - checked_at > INTERVAL '1 hour')
+            ) AND id IN (
                 SELECT id 
                 FROM {table_name}
-                WHERE status = 'CHANGED'
+                WHERE (
+                    status = 'CHANGED' 
+                    OR status = 'BANNED'
+                )
                 LIMIT {total_rows}
             )
             RETURNING *

@@ -48,7 +48,7 @@ with DAG(
     # EMR 작업에서 사용
     emr_task = EmrAddStepsOperator(
         task_id='spark-job',
-        job_flow_id=Variable.get("emr_job_flow_id"),
+        job_flow_id=Variable.get("EMR_JOB_FLOW_ID"),
         aws_conn_id='aws_default',
         wait_for_completion=True,
         do_xcom_push=True, # if True, job_flow_id is pushed to XCom with key job_flow_id.        
