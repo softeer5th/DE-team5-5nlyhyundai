@@ -160,6 +160,9 @@ def process_batch(futures: List) -> List[Dict]:
 
 def lambda_handler(event, context):
     id = event.get('id')
+    checked_at = event.get('checked_at')
+    checked_at = datetime.fromisoformat(checked_at)
+
     start_time = time.time()
     """AWS Lambda에서 실행되는 핸들러 함수"""
     driver = setup_webdriver()
@@ -187,8 +190,7 @@ def lambda_handler(event, context):
         
         if post == [] :
             break
-
-        checked_at = post['checked_at']
+        
         temp_post = crawl_post(driver, post)  # 크롤링과 동시에 감성 분석 스레드 실행
 
         is_success = update_changed_stats(conn, table_name, post['url'], post['comment_count'], post['view'], post['created_at'])            

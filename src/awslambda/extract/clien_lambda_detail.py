@@ -34,6 +34,8 @@ analysis_executor = ThreadPoolExecutor(max_workers=EXECUTOR_MAX)
 def detail(event, context):
 # parameters
     lambda_id = event.get("id")
+    checked_at = event.get("checked_at")
+    checked_at = datetime.fromisoformat(checked_at)
     
     get_my_ip()
     

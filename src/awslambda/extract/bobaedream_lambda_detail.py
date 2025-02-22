@@ -336,6 +336,8 @@ def lambda_handler(event, context):
     # python -m bobaedream.bobaedream_exec 로 실행
     total_rows = event.get("total_rows", 1)
     id = event.get("id")
+    checked_at_dt = event.get("checked_at")
+    checked_at_dt = datetime.fromisoformat(checked_at_dt)
 
     get_my_ip()
     table_name = 'probe_bobae'
