@@ -13,11 +13,8 @@ def checked_at_checker(**context):
     print("[INFO] EMR transform dag 시작 및 형변환")
     checked_at = context['dag_run'].conf['checked_at']
     context['task_instance'].xcom_push(key='checked_at', value=checked_at)
-    kst_checked_at = datetime.strptime(checked_at, "%Y-%m-%dT%H:%M:%S") + timedelta(hours=9)  # UTC+9 (KST)
-    kst_checked_at = checked_at.strftime("%Y-%m-%dT%H:%M:%S")
-    context['task_instance'].xcom_push(key='kst_checked_at', value=kst_checked_at)
-    print(f'크롤링 시작 시간 (UTC+9 기준): {kst_checked_at}')
-    return kst_checked_at
+    print(f'크롤링 시작 시간 (UTC+9 기준): {checked_at}')
+    return checked_at
 
 # DAG 기본 설정
 default_args = {
@@ -67,7 +64,7 @@ with DAG(
                         '--conf', 'spark.task.maxFailures=2',     # Spark 태스크 레벨의 재시도 설정
                         '--conf', 'yarn.app.attempt.failure.validity.interval=30s',  # 30초 간격으로 설정
                         Variable.get("JOB_SCRIPT_PATH"), #'s3://transform-emr/EMR-2.py'
-                        '--checked_at', "{{ task_instance.xcom_pull(task_ids='checked_at_checker', key='kst_checked_at') }}",
+                        '--checked_at', "{{ task_instance.xcom_pull(task_ids='checked_at_checker', key='checked_at') }}",
                     ]
                 }
             }

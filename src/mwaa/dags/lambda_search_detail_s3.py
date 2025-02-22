@@ -38,17 +38,18 @@ def set_environment(**context):
         checked_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=9) # UTC+9
         start_date = checked_at - timedelta(days=3) # 3일 전부터
         end_date = checked_at + timedelta(days=1) # 하루 뒤까지 (반드시 오늘까지 포함)
-        checked_at = checked_at - timedelta(hours=9) # UTC+0
+        checked_at = datetime.strftime(checked_at, '%Y-%m-%dT%H:%M:%S')
+        print(f"한국시간 = input 시간 :{checked_at}로 설정합니다.")
     else:
         print(f"[INFO] DEV 환경에서 실행합니다.")
-        print(f"[INFO] UTC+0기준 checked_at: {Variable.get('checked_at')}")
+        print(f"[INFO] UTC+9기준 checked_at: {Variable.get('checked_at')}")
         checked_at = datetime.strptime(Variable.get('checked_at'), '%Y-%m-%dT%H:%M:%S')
         checked_at = datetime.strftime(checked_at, '%Y-%m-%dT%H:%M:%S')
         start_date = datetime.strptime(Variable.get('start_date'), '%Y-%m-%d')
         start_date = datetime.strftime(start_date, '%Y-%m-%d')
         end_date = datetime.strptime(Variable.get('end_date'), '%Y-%m-%d')
         end_date = datetime.strftime(end_date, '%Y-%m-%d')
-    print(f"[INFO] UTC+0 기준 checked_at: {checked_at}")
+    print(f"[INFO] UTC+9 기준 checked_at: {checked_at}")
     print(f"[INFO] UTC+9 기준 start_date: {start_date}")
     print(f"[INFO] UTC+9 기준 end_date: {end_date}")
     context['task_instance'].xcom_push(key='checked_at', value=checked_at)
@@ -115,7 +116,6 @@ def generate_lambda_search_configs(**context) -> List[Dict]:
         for function_name in function_names:
             lambda_search_configs.append({
                 'function_name': function_name,
-                'func_id': keyword,
                 'task_id': f"invoke_lambda_{function_name}_{keyword}".replace(' ', '_'),
                 'payload': json.dumps({
                     'checked_at': checked_at,
