@@ -52,6 +52,7 @@ def detail(event, context):
     conn = get_db_connection()
     if conn is None:
         print("[ERROR] DB 연결 실패")
+        raise Exception("clien detail db fail")
         return  {
             "status_code": 500, 
             "body": "[ERROR] DETAIL/clien DB 연결 실패"
@@ -147,8 +148,8 @@ def detail(event, context):
         executing += 1
         #time.sleep(REQUEST_REST)
         
-        # if context.get_remaining_time_in_millis() < REMAINING_TIME_LIMIT:
-        #     break
+        if context.get_remaining_time_in_millis() < REMAINING_TIME_LIMIT:
+             break
 
         # as_completed를 Request_rest만큼 대기
         try:
@@ -178,9 +179,12 @@ def detail(event, context):
             print(f"Error processing post: {e}")
             
     if len(all_post) == 0:
+        if return_dict["status_code"] >= 400:
+            raise Exception(f"clien detail error:{return_dict['status_code']} - {return_dict['body']}")
         return return_dict
     save_res = save_s3_bucket_by_parquet(checked_at, platform='clien', data=all_post, id=lambda_id)
     if save_res is None:
+        raise Exception("clien detail failed to save to s3")
         return {
             "status_code": 500,
             "body": "[FATAL ERROR] DETAIL / S3 저장 실패"
@@ -189,4 +193,3 @@ def detail(event, context):
         "status_code": 200,
         "body": "[INFO] DETAIL / S3 저장 성공"
     }
-detail({'id': 1, 'checked_at':'2000-01-01T19:00:01'},None)

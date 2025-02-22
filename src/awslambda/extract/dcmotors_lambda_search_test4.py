@@ -26,7 +26,7 @@ DCINSIDE_URL = "https://gall.dcinside.com"
 
 # ✅ 직접 설정할 변수들
 # search_positions = [-9765863, -9755863, -9745863, -9735863, -9725863, -9715863, -9705863, -9695863, -9685863, -9675863, -9665863, -9655863, -9645863, -9635863, -9625863, -9615863]  # 🔹 크롤링할 검색 포지션 리스트
-search_positions = [-9625863, -9615863, -9605863, -9595863]
+search_positions = [-9735863, -9725863, -9715863]
 max_pages = 15  # 🔹 각 search_pos에서 최대 몇 개의 페이지를 탐색할지 설정
 table_name = "probe_dcmotors"  # 🔹 사용할 테이블
 
@@ -37,7 +37,6 @@ def lambda_handler(event, context):
     conn = get_db_connection()
     if conn is None:
         print("[ERROR] DB 연결 실패")
-        raise Exception("dc search: 500 - DB 연결 실패")
         return {
             "statusCode": 500,
             "body": json.dumps({"error": "DB 연결 실패"})

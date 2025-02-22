@@ -310,6 +310,7 @@ def lambda_handler(event, context):
     table_name = 'probe_bobae'
     status_code, details_data = parse_detail(total_rows, checked_at_dt)
     if details_data == 500:
+        raise Exception("bobae detail: 500 - [ERROR] DETAIL / DB 연결 실패")
         return {
             "status_code": 500,
             "body": "[ERROR] DETAIL / DB 연결 실패"
@@ -340,17 +341,20 @@ def lambda_handler(event, context):
         if details_data:
             for detail in details_data:
                 update_status_changed(conn, table_name, detail["url"])
+        raise Exception("bobae detail: 500 - [ERROR] S3 저장 실패")
         return {
             "status_code": 500,
             "body": "[ERROR] S3 저장 실패"
         }
     finally:
         if status_code == 403:
+            raise Exception(f"bobae detail: 403 - [WARNING] DETAIL / IP 차단됨 / 크롤링 데이터: {len(details_data)} 건")
             return {
                 "status_code": 403,
                 "body": f"[WARNING] DETAIL / IP 차단됨 / 크롤링 데이터: {len(details_data)} 건"
             }
         elif status_code == 408:
+            raise Exception(f"bobae detail: 403 - [WARNING] DETAIL / 람다 함수 시간 초과 / 크롤링 데이터: {len(details_data)} 건")
             return {
                 "status_code": 408,
                 "body": f"[WARNING] DETAIL / 람다 함수 시간 초과 / 크롤링 데이터: {len(details_data)} 건"
