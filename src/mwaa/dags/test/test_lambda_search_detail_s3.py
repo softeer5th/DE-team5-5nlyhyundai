@@ -23,7 +23,7 @@ default_args = {
     'email_on_retry': False,
     'retries': 1,
     'retry_delay': timedelta(seconds=30),  # 빠른 재시도를 위해 30초로 설정
-    'execution_timeout': timedelta(minutes=15)  # 5분 제한 설정
+    'execution_timeout': timedelta(minutes=30)  # 5분 제한 설정
 }
 
 @task(task_id='set_environment')
@@ -31,30 +31,24 @@ def set_environment(**context):
     """
     테스트를 위하여 시간을 설정합니다.
 
+    checked_at, start_date, end_date
     """
-    print(f"[INFO] ENVIRONMENT: {type(Variable.get('ENVIRONMENT'))}")
-    if Variable.get('ENVIRONMENT') == 'PROD':
-        print(f"[INFO] PROD 환경에서 실행합니다.")
-        checked_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=9) # UTC+9
-        start_date = checked_at - timedelta(days=3) # 3일 전부터
-        end_date = checked_at + timedelta(days=1) # 하루 뒤까지 (반드시 오늘까지 포함)
-        checked_at = checked_at - timedelta(hours=9) # UTC+0
-    else:
-        print(f"[INFO] DEV 환경에서 실행합니다.")
-        print(f"[INFO] UTC+0기준 checked_at: {Variable.get('checked_at')}")
-        checked_at = datetime.strptime(Variable.get('checked_at'), '%Y-%m-%dT%H:%M:%S')
-        checked_at = datetime.strftime(checked_at, '%Y-%m-%dT%H:%M:%S')
-        start_date = datetime.strptime(Variable.get('start_date'), '%Y-%m-%d')
-        start_date = datetime.strftime(start_date, '%Y-%m-%d')
-        end_date = datetime.strptime(Variable.get('end_date'), '%Y-%m-%d')
-        end_date = datetime.strftime(end_date, '%Y-%m-%d')
-    print(f"[INFO] UTC+0 기준 checked_at: {checked_at}")
-    print(f"[INFO] UTC+9 기준 start_date: {start_date}")
-    print(f"[INFO] UTC+9 기준 end_date: {end_date}")
+    print(f"[INFO] 타입: {type(Variable.get('checked_at'))}")
+    print(f"[INFO] checked_at: {Variable.get('checked_at')}")
+    checked_at = datetime.strptime(Variable.get('checked_at'), '%Y-%m-%dT%H:%M:%S')
+    start_date = datetime.strptime(Variable.get('start_date'), '%Y-%m-%d')
+    end_date = datetime.strptime(Variable.get('end_date'), '%Y-%m-%d')
+    checked_at = datetime.strftime(checked_at, '%Y-%m-%dT%H:%M:%S')
+    start_date = datetime.strftime(start_date, '%Y-%m-%d')
+    end_date = datetime.strftime(end_date, '%Y-%m-%d')
+    print(f"[INFO] checked_at: {checked_at}")
+    print(f"[INFO] start_date: {start_date}")
+    print(f"[INFO] end_date: {end_date}")
     context['task_instance'].xcom_push(key='checked_at', value=checked_at)
     context['task_instance'].xcom_push(key='start_date', value=start_date)
     context['task_instance'].xcom_push(key='end_date', value=end_date)
-
+    
+    
 @task
 def generate_lambda_search_configs(**context) -> List[Dict]:
     """Lambda 함수 설정을 생성
@@ -102,14 +96,14 @@ def generate_lambda_search_configs(**context) -> List[Dict]:
     
     keywords = _get_keyword_from_rds()
 
-    lambda_search_configs = []
     checked_at = context['task_instance'].xcom_pull(task_ids='set_environment', key='checked_at')
     start_date = context['task_instance'].xcom_pull(task_ids='set_environment', key='start_date')
     end_date = context['task_instance'].xcom_pull(task_ids='set_environment', key='end_date')
 
+    lambda_search_configs = []
     function_names_str = Variable.get('LAMBDA_SEARCH_FUNC')
     function_names = function_names_str.split(",")
-    print(f"[INFO] 함수들 이름: {function_names}")
+    # function_names = Variable("LAMBDA_SEARCH_FUNC").split(",")
     
     for keyword in keywords:
         for function_name in function_names:
@@ -120,18 +114,12 @@ def generate_lambda_search_configs(**context) -> List[Dict]:
                 'payload': json.dumps({
                     'checked_at': checked_at,
                     'keyword': keyword,
-                    # 'start_date': start_date,
-                    # 'end_date': end_date,
+                    'start_date': start_date,
+                    'end_date': end_date,
                 })
             })
     print(f"총 search 람다 갯수 : {len(lambda_search_configs)}")
     return lambda_search_configs
-
-def invoke_lambda_handler(task_id, **context):
-    task_instance = context['task_instance']
-    response = task_instance.xcom_pull(task_ids='lambda_task')
-    if response.json().get('status_code') == '403':
-        raise AirflowException(f"Lambda {task_id} returned 403 Forbidden") 
 
 @task
 def invoke_lambda(config, retries:int, invocation_type='RequestResponse', **context):
@@ -175,7 +163,6 @@ def generate_lambda_detail_configs(**context) -> List[dict]:
     lambda_detail_configs = []
     function_names_str = Variable.get('LAMBDA_DETAIL_FUNC')
     function_names = function_names_str.split(",")
-    print(f"[INFO] 함수들 이름: {function_names}")
     
     pg_hook = PostgresHook(postgres_conn_id='postgres_conn')
     # 결과: 튜플
@@ -217,23 +204,14 @@ def generate_lambda_detail_configs(**context) -> List[dict]:
     return lambda_detail_configs
 
 with DAG(
-    'lambda_to_s3_workflow',
+    'test_lambda_to_s3_workflow',
     default_args=default_args,
-    description='[PROD] Trigger Lambda functions and Load data to S3',
-    schedule_interval=timedelta(minutes=15),
+    description='[TEST] Trigger Lambda functions and Load data to S3',
+    schedule_interval=timedelta(minutes=60),
     catchup=False
 ) as dag:
-    # 변수 체크
-    Variable.get('LAMBDA_SEARCH_FUNC')
-    Variable.get('LAMBDA_DETAIL_FUNC')
-    Variable.get('DETAIL_BATCH_SIZE')
-    Variable.get('keyword_set_name')
-    Variable.get('ENVIRONMENT')
-    Variable.get('checked_at')
-    Variable.get('start_date')
-    Variable.get('end_date')
     
-
+    # checked_at = datetime.fromisoformat(datetime.now(timezone.utc).isoformat(sep='T'))
     set_environment_task = set_environment()
     # RDS에서 키워드 가져오기
     lambda_search_configs = generate_lambda_search_configs()
@@ -245,10 +223,10 @@ with DAG(
     detail_lambda_tasks = invoke_lambda.partial(invocation_type='RequestResponse', retries=3).expand(config=lambda_detail_configs)
 
     trigger_second_dag = TriggerDagRunOperator(
-        task_id='trigger_emr_dag',
-        trigger_dag_id='emr_transform_dag',
+        task_id='trigger_test_emr_transform_dag',
+        trigger_dag_id='test_emr_transform_dag',
         conf={
-            'from_dag': 'lambda_to_s3_workflow',
+            'from_dag': 'test_lambda_to_s3_workflow',
             'checked_at': "{{ task_instance.xcom_pull(task_ids='set_environment', key='checked_at') }}"
         },
         wait_for_completion = False,
@@ -256,5 +234,5 @@ with DAG(
     )
 
     set_environment_task >> lambda_search_configs >> search_lambda_tasks 
-    search_lambda_tasks >> lambda_detail_configs >> detail_lambda_tasks
+    search_lambda_tasks  >> lambda_detail_configs >> detail_lambda_tasks
     detail_lambda_tasks >> trigger_second_dag

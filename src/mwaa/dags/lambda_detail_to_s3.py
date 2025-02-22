@@ -26,37 +26,29 @@ default_args = {
     'execution_timeout': timedelta(minutes=15)  # 5분 제한 설정
 }
 
-@task(task_id='set_environment')
-def set_environment(**context):
+def get_details_count(**context) -> List[str]:
     """
-    테스트를 위하여 시간을 설정합니다.
+    detail 단계에서 처리할 url들을 가져옵니다.
+    """
+    pg_hook = PostgresHook(postgres_conn_id='postgres_conn')
+    with pg_hook.get_conn() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute('''
+                        SELECT 
+                            (SELECT COUNT(*) FROM probe_bobae WHERE status != 'UNCHANGED') as bobae_count,
+                            (SELECT COUNT(*) FROM probe_clien WHERE status != 'UNCHANGED') as clien_count,
+                            (SELECT COUNT(*) FROM probe_dcmotors WHERE status != 'UNCHANGED') as dc_count
+                        ''')
+        
+            details_count = cursor.fetchone()  # fetchall() 대신 fetchone() 사용
+    print("변경된 데이터 개수")
+    print(f"보배: {details_count['bobae_count']}, 클리앙: {details_count['clien_count']}, 디시인사이드: {details_count['dc_count']}")        
+    context['task_instance'].xcom_push(key='details_count', value=details_count)
+    return details_count
 
-    """
-    print(f"[INFO] ENVIRONMENT: {type(Variable.get('ENVIRONMENT'))}")
-    if Variable.get('ENVIRONMENT') == 'PROD':
-        print(f"[INFO] PROD 환경에서 실행합니다.")
-        checked_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=9) # UTC+9
-        start_date = checked_at - timedelta(days=3) # 3일 전부터
-        end_date = checked_at + timedelta(days=1) # 하루 뒤까지 (반드시 오늘까지 포함)
-        checked_at = checked_at - timedelta(hours=9) # UTC+0
-    else:
-        print(f"[INFO] DEV 환경에서 실행합니다.")
-        print(f"[INFO] UTC+0기준 checked_at: {Variable.get('checked_at')}")
-        checked_at = datetime.strptime(Variable.get('checked_at'), '%Y-%m-%dT%H:%M:%S')
-        checked_at = datetime.strftime(checked_at, '%Y-%m-%dT%H:%M:%S')
-        start_date = datetime.strptime(Variable.get('start_date'), '%Y-%m-%d')
-        start_date = datetime.strftime(start_date, '%Y-%m-%d')
-        end_date = datetime.strptime(Variable.get('end_date'), '%Y-%m-%d')
-        end_date = datetime.strftime(end_date, '%Y-%m-%d')
-    print(f"[INFO] UTC+0 기준 checked_at: {checked_at}")
-    print(f"[INFO] UTC+9 기준 start_date: {start_date}")
-    print(f"[INFO] UTC+9 기준 end_date: {end_date}")
-    context['task_instance'].xcom_push(key='checked_at', value=checked_at)
-    context['task_instance'].xcom_push(key='start_date', value=start_date)
-    context['task_instance'].xcom_push(key='end_date', value=end_date)
 
 @task
-def generate_lambda_search_configs(**context) -> List[Dict]:
+def generate_lambda_search_configs(checked_at, **context) -> List[Dict]:
     """Lambda 함수 설정을 생성
     
     Args:
@@ -98,18 +90,15 @@ def generate_lambda_search_configs(**context) -> List[Dict]:
                 keywords = cursor.fetchone()
                 keywords:List[str] = keywords['keywords']
         print(f"키워드 목록: {keywords}")
+        context['task_instance'].xcom_push(key='keywords', value=keywords)
         return keywords
     
     keywords = _get_keyword_from_rds()
 
     lambda_search_configs = []
-    checked_at = context['task_instance'].xcom_pull(task_ids='set_environment', key='checked_at')
-    start_date = context['task_instance'].xcom_pull(task_ids='set_environment', key='start_date')
-    end_date = context['task_instance'].xcom_pull(task_ids='set_environment', key='end_date')
-
     function_names_str = Variable.get('LAMBDA_SEARCH_FUNC')
     function_names = function_names_str.split(",")
-    print(f"[INFO] 함수들 이름: {function_names}")
+    # function_names = Variable("LAMBDA_SEARCH_FUNC").split(",")
     
     for keyword in keywords:
         for function_name in function_names:
@@ -120,22 +109,24 @@ def generate_lambda_search_configs(**context) -> List[Dict]:
                 'payload': json.dumps({
                     'checked_at': checked_at,
                     'keyword': keyword,
-                    # 'start_date': start_date,
-                    # 'end_date': end_date,
+                    'start_date': '2025-02-01',
                 })
             })
-    print(f"총 search 람다 갯수 : {len(lambda_search_configs)}")
+    print(f"lambda_search_configs : {lambda_search_configs}")
     return lambda_search_configs
 
-def invoke_lambda_handler(task_id, **context):
-    task_instance = context['task_instance']
-    response = task_instance.xcom_pull(task_ids='lambda_task')
-    if response.json().get('status_code') == '403':
-        raise AirflowException(f"Lambda {task_id} returned 403 Forbidden") 
+# def invoke_lambda_handler(config, context):
+#     task_id = config['task_id'] # config 사용
+#     response = context['ti'].xcom_pull(task_ids=task_id, key='response') # response key로 저장
+#     if response and response.get('status_code') == 403: # statusCode로 확인
+#         context['ti'].xcom_push(key=task_id, value=f"retry")
+#         raise AirflowException(f"[ERROR] Lambda {task_id} returned 403 / 크롤러 밴")
+#     if response and response.get('status_code') == 500: # statusCode로 확인
+#         context['ti'].xcom_push(key=task_id, value=f"retry")
+#         raise AirflowException(f"[ERROR] Lambda {task_id} returned 500 / DB 연결 오류")
 
 @task
 def invoke_lambda(config, retries:int, invocation_type='RequestResponse', **context):
-    print(f"Invoke Lambda: {config['function_name']}")
     try:
         operator = LambdaInvokeFunctionOperator(
             task_id=config['task_id'],
@@ -165,8 +156,8 @@ def invoke_lambda(config, retries:int, invocation_type='RequestResponse', **cont
         print(f"Error invoking Lambda: {e}")
         raise  # Re-raise the exception to mark the task as failed
 
-@task(trigger_rule='all_success')
-def generate_lambda_detail_configs(**context) -> List[dict]:
+@task
+def generate_lambda_detail_configs() -> List[dict]:
     """
     Lambda 함수 중 detail을 설정을 생성하는 함수
     
@@ -175,10 +166,15 @@ def generate_lambda_detail_configs(**context) -> List[dict]:
     lambda_detail_configs = []
     function_names_str = Variable.get('LAMBDA_DETAIL_FUNC')
     function_names = function_names_str.split(",")
-    print(f"[INFO] 함수들 이름: {function_names}")
-    
+    # function_names = Variable("LAMBDA_DETAIL_FUNC").split(",")
+    # total_count = sum(details_count.values())
+    # for func_name, count in zip(details_count.values()): # dict 순서가 보장되기 때문에 zip 사용
+    #     for _ in range(max(count // 10, 1)): # 최대 10개 정도씩 처리 유도.
+    #         lambda_configs.append({
+    #             'function_name': func_name,
+    #             'payload': json.dumps({})
+    #         })
     pg_hook = PostgresHook(postgres_conn_id='postgres_conn')
-    # 결과: 튜플
     with pg_hook.get_conn() as conn:
         with conn.cursor() as cursor:
             cursor.execute('''
@@ -191,55 +187,32 @@ def generate_lambda_detail_configs(**context) -> List[dict]:
             details_count = cursor.fetchone()  # fetchall() 대신 fetchone() 사용
     
     print("변경된 데이터 개수")
-    print(f"보배: {details_count[0]}, 클리앙: {details_count[1]}, 디시인사이드: {details_count[2]}")
+    print(f"보배: {details_count['bobae_count']}, 클리앙: {details_count['clien_count']}, 디시인사이드: {details_count['dc_count']}")
 
     # 20개 당 하나씩 처리
-    detail_batch_size = int(Variable.get('DETAIL_BATCH_SIZE')) # 현재 150개로 설정. (어차피 그 이하는 키는 비용이 더욱 나감)
-    crawler_counts = [math.ceil(v / detail_batch_size) for v in details_count]
-
-    max_count = max(crawler_counts)
-    checked_at = context['task_instance'].xcom_pull(task_ids='set_environment', key='checked_at')
-
-    # 라운드 로빈 방식으로 배치
-    for idx in range(max_count):
-        for function_name, count in zip(function_names, crawler_counts):
-            if idx < count:  # 해당 function의 count보다 작을 때만 추가
-                lambda_detail_configs.append({
-                    'function_name': function_name,
-                    'task_id': f"invoke_lambda_{function_name}{idx}".replace(' ', '_'),
-                    'func_id': idx,
-                    'payload': json.dumps({
-                        'id':f"invoke_lambda_{function_name}{idx}".replace(' ', '_'),
-                        'checked_at': checked_at,
-                        })
-                })
-    print(f"총 Detail 람다 갯수 : {len(lambda_detail_configs)}")
+    detail_batch_size = Variable.get('DETAIL_BATCH') # 현재 20
+    crawler_counts = [max(math.ceil(v / detail_batch_size), 1) for v in details_count.values()]
+    detail_batch_size = 20
+    print(f"크롤러 별 배치 사이즈: {crawler_counts}")
+    for function_name in function_names:
+        for idx in crawler_counts: # bobae, clien, dc. 순서
+            lambda_detail_configs.append({
+                'function_name': function_name,
+                'task_id': f"invoke_lambda_{function_name}{idx}".replace(' ', '_'),
+                'func_id': idx,
+                'payload': json.dumps({})
+            })
     return lambda_detail_configs
 
 with DAG(
-    'lambda_to_s3_workflow',
+    'lambda_detail_to_s3',
     default_args=default_args,
-    description='[PROD] Trigger Lambda functions and Load data to S3',
-    schedule_interval=timedelta(minutes=15),
+    description='Trigger Lambda functions and Load data to S3',
+    schedule_interval=timedelta(minutes=60),
     catchup=False
 ) as dag:
-    # 변수 체크
-    Variable.get('LAMBDA_SEARCH_FUNC')
-    Variable.get('LAMBDA_DETAIL_FUNC')
-    Variable.get('DETAIL_BATCH_SIZE')
-    Variable.get('keyword_set_name')
-    Variable.get('ENVIRONMENT')
-    Variable.get('checked_at')
-    Variable.get('start_date')
-    Variable.get('end_date')
-    
+    checked_at = "{{ dag_run.conf['checked_at'] }}"
 
-    set_environment_task = set_environment()
-    # RDS에서 키워드 가져오기
-    lambda_search_configs = generate_lambda_search_configs()
-    # Dynamic task mapping!
-    search_lambda_tasks = invoke_lambda.partial(invocation_type='RequestResponse', retries=3).expand(config=lambda_search_configs)
-    
     lambda_detail_configs = generate_lambda_detail_configs()
 
     detail_lambda_tasks = invoke_lambda.partial(invocation_type='RequestResponse', retries=3).expand(config=lambda_detail_configs)
@@ -248,13 +221,13 @@ with DAG(
         task_id='trigger_emr_dag',
         trigger_dag_id='emr_transform_dag',
         conf={
-            'from_dag': 'lambda_to_s3_workflow',
-            'checked_at': "{{ task_instance.xcom_pull(task_ids='set_environment', key='checked_at') }}"
+            'from_dag': 'lambda_detail_to_s3',
+            'checked_at': checked_at
         },
         wait_for_completion = False,
-        trigger_rule='all_success'
     )
-
-    set_environment_task >> lambda_search_configs >> search_lambda_tasks 
-    search_lambda_tasks >> lambda_detail_configs >> detail_lambda_tasks
+    lambda_detail_configs >> detail_lambda_tasks
     detail_lambda_tasks >> trigger_second_dag
+
+
+    
