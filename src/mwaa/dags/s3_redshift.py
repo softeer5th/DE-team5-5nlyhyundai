@@ -13,11 +13,11 @@ from airflow.models import Variable
 def checked_at_checker(**context):
     print("[INFO] EMR transform dag 시작 및 형변환")
     checked_at = context['dag_run'].conf['checked_at']
-    kst_checked_at = datetime.strptime(checked_at, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=None) + timedelta(hours=9)  # UTC+9 (KST)
-    print(f'크롤링 시작 시간: {kst_checked_at}')
-    date = kst_checked_at.date().strftime("%Y-%m-%d")
-    hour = str(kst_checked_at.hour)
-    minute = str(kst_checked_at.minute)
+    checked_at = datetime.strptime(checked_at, "%Y-%m-%dT%H:%M:%S") # UTC+9 (KST)
+    print(f'크롤링 시작 시간 (한국 UTC+9): {checked_at}')
+    date = checked_at.date().strftime("%Y-%m-%d")
+    hour = str(checked_at.hour)
+    minute = str(checked_at.minute)
 
     # S3 키 경로 설정
     s3_posts_key = f"benz_output/posts/{date}/{hour}/{minute}/posts"

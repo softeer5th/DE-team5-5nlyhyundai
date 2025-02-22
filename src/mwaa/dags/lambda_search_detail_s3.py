@@ -38,17 +38,18 @@ def set_environment(**context):
         checked_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=9) # UTC+9
         start_date = checked_at - timedelta(days=3) # 3일 전부터
         end_date = checked_at + timedelta(days=1) # 하루 뒤까지 (반드시 오늘까지 포함)
-        checked_at = checked_at - timedelta(hours=9) # UTC+0
+        checked_at = datetime.strftime(checked_at, '%Y-%m-%dT%H:%M:%S')
+        print(f"한국시간 = input 시간 :{checked_at}로 설정합니다.")
     else:
         print(f"[INFO] DEV 환경에서 실행합니다.")
-        print(f"[INFO] UTC+0기준 checked_at: {Variable.get('checked_at')}")
+        print(f"[INFO] UTC+9기준 checked_at: {Variable.get('checked_at')}")
         checked_at = datetime.strptime(Variable.get('checked_at'), '%Y-%m-%dT%H:%M:%S')
         checked_at = datetime.strftime(checked_at, '%Y-%m-%dT%H:%M:%S')
         start_date = datetime.strptime(Variable.get('start_date'), '%Y-%m-%d')
         start_date = datetime.strftime(start_date, '%Y-%m-%d')
         end_date = datetime.strptime(Variable.get('end_date'), '%Y-%m-%d')
         end_date = datetime.strftime(end_date, '%Y-%m-%d')
-    print(f"[INFO] UTC+0 기준 checked_at: {checked_at}")
+    print(f"[INFO] UTC+9 기준 checked_at: {checked_at}")
     print(f"[INFO] UTC+9 기준 start_date: {start_date}")
     print(f"[INFO] UTC+9 기준 end_date: {end_date}")
     context['task_instance'].xcom_push(key='checked_at', value=checked_at)
@@ -115,7 +116,6 @@ def generate_lambda_search_configs(**context) -> List[Dict]:
         for function_name in function_names:
             lambda_search_configs.append({
                 'function_name': function_name,
-                'func_id': keyword,
                 'task_id': f"invoke_lambda_{function_name}_{keyword}".replace(' ', '_'),
                 'payload': json.dumps({
                     'checked_at': checked_at,
@@ -127,11 +127,15 @@ def generate_lambda_search_configs(**context) -> List[Dict]:
     print(f"총 search 람다 갯수 : {len(lambda_search_configs)}")
     return lambda_search_configs
 
-def invoke_lambda_handler(task_id, **context):
-    task_instance = context['task_instance']
-    response = task_instance.xcom_pull(task_ids='lambda_task')
-    if response.json().get('status_code') == '403':
-        raise AirflowException(f"Lambda {task_id} returned 403 Forbidden") 
+# def invoke_lambda_handler(config, context):
+#     task_id = config['task_id'] # config 사용
+#     response = context['ti'].xcom_pull(task_ids=task_id, key='response') # response key로 저장
+#     if response and response.get('status_code') == 403: # statusCode로 확인
+#         context['ti'].xcom_push(key=task_id, value=f"retry")
+#         raise AirflowException(f"[ERROR] Lambda {task_id} returned 403 / 크롤러 밴")
+#     if response and response.get('status_code') == 500: # statusCode로 확인
+#         context['ti'].xcom_push(key=task_id, value=f"retry")
+#         raise AirflowException(f"[ERROR] Lambda {task_id} returned 500 / DB 연결 오류")
 
 @task
 def invoke_lambda(config, retries:int, invocation_type='RequestResponse', **context):
