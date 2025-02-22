@@ -173,7 +173,7 @@ def lambda_handler(event, context):
     
     if conn is None:
         print("🔴 DB 연결 실패")
-        raise "dc detail: 500 - DB 연결 실패"
+        raise Exception("dc detail: 500 - DB 연결 실패")
         return {"status_code": 500, "body": "DB 연결 실패"}
 
     table_name = event.get("table_name", "probe_dcmotors")
@@ -187,7 +187,7 @@ def lambda_handler(event, context):
         post = get_details_to_parse(conn, table_name)
 
         if post is None :
-            raise "dc detail: 500 - DB 연결 실패"
+            raise Exception("dc detail: 500 - DB 연결 실패")
             return {
             "status_code": 500,
             "body": "[ERROR] DETAIL / DB 연결 실패"
@@ -237,7 +237,7 @@ def lambda_handler(event, context):
         conn = get_db_connection()
         for failed_post in crawled_post:
             update_status_failed(conn, table_name, failed_post['url'])
-        raise "dc detail: 500 - S3 저장 실패"
+        raise Exception("dc detail: 500 - S3 저장 실패")
         return {
             'status_code': 500,
             'body': '[ERROR] S3 저장 실패'

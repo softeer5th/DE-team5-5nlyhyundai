@@ -202,7 +202,7 @@ def lambda_handler(event, context):
         html = extract_bobaedream(start_date, page_num=i, keyword=keyword)
         # save_html('htmls/search', html)
         if html is None:
-            raise "bobae search: 403 - [WARNING] SEARCH / 보배드림 IP 차단됨!"
+            raise Exception("bobae search: 403 - [WARNING] SEARCH / 보배드림 IP 차단됨!")
             return {
                 "status_code": 403,
                 "body": "[WARNING] SEARCH / 보배드림(platform으로 대체) IP 차단됨!"
@@ -213,7 +213,7 @@ def lambda_handler(event, context):
         
         if result == 500:
             print(f"[ERROR] DB 연결 실패: {keyword}")
-            raise "bobae search: 500 - [ERROR] SEARCH / DB 연결 실패"    
+            raise Exception("bobae search: 500 - [ERROR] SEARCH / DB 연결 실패")
             return {
                 "status_code": 500,
                 "body": "[ERROR] SEARCH / DB 연결 실패"

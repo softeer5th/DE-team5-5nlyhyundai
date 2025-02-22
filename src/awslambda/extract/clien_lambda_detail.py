@@ -52,7 +52,7 @@ def detail(event, context):
     conn = get_db_connection()
     if conn is None:
         print("[ERROR] DB 연결 실패")
-        raise "clien detail db fail"
+        raise Exception("clien detail db fail")
         return  {
             "status_code": 500, 
             "body": "[ERROR] DETAIL/clien DB 연결 실패"
@@ -180,11 +180,11 @@ def detail(event, context):
             
     if len(all_post) == 0:
         if return_dict["status_code"] >= 400:
-            raise f"clien detail error:{return_dict['status_code']} - {return_dict['body']}"
+            raise Exception(f"clien detail error:{return_dict['status_code']} - {return_dict['body']}")
         return return_dict
     save_res = save_s3_bucket_by_parquet(checked_at, platform='clien', data=all_post, id=lambda_id)
     if save_res is None:
-        raise "clien detail failed to save to s3"
+        raise Exception("clien detail failed to save to s3")
         return {
             "status_code": 500,
             "body": "[FATAL ERROR] DETAIL / S3 저장 실패"

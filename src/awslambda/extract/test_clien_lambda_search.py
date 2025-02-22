@@ -53,7 +53,7 @@ def search(event, context):
     
     conn = get_db_connection()
     if conn is None:
-        raise "clien search: 500 - [ERROR] SEARCH / DB 연결 실패"
+        raise Exception("clien search: 500 - [ERROR] SEARCH / DB 연결 실패")
         return {
             "status_code": 500,
             "body": "[ERROR] SEARCH / DB 연결 실패"
@@ -76,7 +76,7 @@ def search(event, context):
             print("status code:", response.status_code)
             print("headers:", response.headers)
             print("body:", response.text)
-            raise "clien search: 403 - [WARNING] SEARCH/clien 연결 실패"
+            raise Exception("clien search: 403 - [WARNING] SEARCH/clien 연결 실패")
             return  {
                 "status_code": 403, 
                 "body": "[WARNING] SEARCH/clien 연결 실패"
