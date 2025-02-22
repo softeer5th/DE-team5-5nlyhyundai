@@ -34,6 +34,7 @@ def lambda_handler(event, context):
     conn = get_db_connection()
     if conn is None:
         print("[ERROR] DB 연결 실패")
+        raise "500 - DB 연결 실패"
         return {
             "statusCode": 500,
             "body": json.dumps({"error": "DB 연결 실패"})
