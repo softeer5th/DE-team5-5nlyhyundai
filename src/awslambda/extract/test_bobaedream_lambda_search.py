@@ -197,7 +197,7 @@ def lambda_handler(event, context):
     
     # 검색할 키워드
     keyword = event.get('keyword')
-    for i in range(100, 150):
+    for i in range(80, 170):
         html = extract_bobaedream(start_date, page_num=i, keyword=keyword)
         # save_html('htmls/search', html)
         if html is None:
