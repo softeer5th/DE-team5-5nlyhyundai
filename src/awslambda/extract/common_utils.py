@@ -752,12 +752,12 @@ def analyze_post_with_gpt(post):
 
 """
 Table "Proxy_ip"
-|-----|----------|------------|-------|--------------|
-| ip  | dcmotors | bobaedream | clien | availability |
-|-----|----------|------------|-------|--------------|
-| str | "NONE" or "USING" or "BANNED" | True/False   |
-|     | type: varchar(8)              | boolean type |
-|-----|----------|------------|-------|--------------|
+|-----|----------|------------|-------|--------------|------------|
+| ip  | dcmotors | bobaedream | clien | availability | created_at |
+|-----|----------|------------|-------|--------------|------------|
+| str | "NONE" or "USING" or "BANNED" | True/False   | datetime   |
+|     | type: varchar(8)              | boolean type |            |
+|-----|----------|------------|-------|--------------|------------|
 """
 
 def update_proxy_table() -> bool:
@@ -826,7 +826,7 @@ def get_proxy_ip(platform: str) -> Optional[Dict[str, str]]:
             platform = platform.lower()
             if platform not in ['dcmotors', 'bobaedream', 'clien']:
                 raise ValueError("Invalid platform")
-                
+
             # 사용 가능한 IP 찾기
             cur.execute(f"""
                 UPDATE proxy_ip 
@@ -873,7 +873,14 @@ def return_proxy_ip(ip: str, platform: str, isBanned: bool, isTimeout: bool) -> 
         with db_conn.cursor() as cur:
             if platform not in ['dcmotors', 'bobaedream', 'clien']:
                 raise ValueError("Invalid platform")
-                
+            # 10 분 지난 IP 데이터는 파기
+            cur.execute("""
+                DELETE
+                FROM proxy_ip
+                WHERE created_at < NOW() - INTERVAL '10 minutes'
+                        """)
+            db_conn.commit()    
+            
             # 상태 업데이트
             status = "BANNED" if isBanned else "NONE"
             
@@ -890,3 +897,73 @@ def return_proxy_ip(ip: str, platform: str, isBanned: bool, isTimeout: bool) -> 
     except Exception as e:
         print(f"[ERROR] 프록시 IP 반환 실패: {e}")
         traceback.print_exc()
+
+def requestPage(platform, func, **kwargs):
+    print(f"[INFO] 웹페이지 접속 시도: {kwargs["url"]}")
+    try:
+        response = func(**kwargs)
+        if response.status_code != 200:
+            raise "받아온 status code가 200이 아닙니다."
+    except Exception as e:
+        print(f"[INFO] \t인터넷 접속 오류 발생: {e}")
+
+    isBanned = response.status_code != 200
+
+    # 프록시로 접속 시도
+    if isBanned:
+        print( "[INFO] \t프록시로 접속 시도합니다.")
+    if db_conn is None: 
+        get_db_connection()
+
+    while isBanned:
+        proxy = get_proxy_ip(platform)
+        kwargs["proxies"] = proxy
+        try:
+            response = func(**kwargs)
+        except Exception as e:
+            print(f"[INFO] \t프록시 인터넷 접속 오류 발생: {e}")
+            return_proxy_ip(proxy["http"], platform, isBanned=True, isTimeout=True)
+        else:
+            isBanned = response.status_code != 200
+            print(f"[INFO] \t프록시 응답 코드: {response.status_code}")
+            return_proxy_ip(proxy['http'], platform, isBanned, isTimeout=False)
+    
+    if response is None:
+        print("[INFO] 웹페이지 접속실패")
+        return None
+
+    print(f"[INFO] 인터넷 접속 - status code: {response.status_code if response is not None else "접속실패"}")
+    response.encoding = 'utf-8'
+    return response.text
+
+def requestPageProxy(platform, func, **kwargs):
+    print(f"[INFO] 웹페이지 접속 시도: {kwargs["url"]}")
+    print( "[INFO] \t프록시로 접속 시도합니다.")
+    if db_conn is None: 
+        get_db_connection()
+
+    isBanned = True
+    while isBanned:
+        proxy = get_proxy_ip(platform)
+        kwargs["proxies"] = proxy
+        try:
+            response = func(**kwargs)
+        except Exception as e:
+            print(f"[INFO] \t프록시 인터넷 접속 오류 발생: {e}")
+            return_proxy_ip(proxy["http"], platform, isBanned=True, isTimeout=True)
+        else:
+            isBanned = response.status_code != 200
+            print(f"[INFO] \t프록시 응답 코드: {response.status_code}")
+            return_proxy_ip(proxy['http'], platform, isBanned, isTimeout=False)
+        
+    if response is None:
+        print("[INFO] 웹페이지 접속실패")
+        return None
+
+    print(f"[INFO] 인터넷 접속 - status code: {response.status_code if response is not None else "접속실패"}")
+    response.encoding = 'utf-8'
+    return response.text
+
+
+if __name__ == "__main__":
+    db_conn = get_db_connection()

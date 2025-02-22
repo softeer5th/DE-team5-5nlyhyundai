@@ -58,5 +58,6 @@ CREATE TABLE IF NOT EXISTS proxy_ip (
     dcmotors VARCHAR(8),
     bobaedream VARCHAR(8),
     clien VARCHAR(8),
-    Availability BOOLEAN
+    Availability BOOLEAN,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

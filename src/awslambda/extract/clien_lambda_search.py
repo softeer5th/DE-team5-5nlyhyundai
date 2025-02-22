@@ -17,7 +17,8 @@ from common_utils import (
     update_status_unchanged,
     update_changed_stats,
     get_proxy_ip,
-    return_proxy_ip
+    return_proxy_ip,
+    requestPage
 )
 
 BASIC_URL = "https://www.clien.net/service/search?q={query}&sort=recency&p={page_num}&boardCd=&isBoard=false"
@@ -74,6 +75,7 @@ def search(event, context):
         REQUEST_REST = 1 + random.random()
         print("try:", full_url)
 
+        content = requestPage()
         response = requests.get(full_url, headers=headers, allow_redirects=False)
         isBanned = response.status_code != 200
         if isBanned:

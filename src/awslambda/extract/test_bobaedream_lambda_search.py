@@ -59,7 +59,7 @@ def extract_bobaedream(start_date, page_num, keyword) -> Optional[str]:
         )
     # cookies = response.cookies
     # response_headers = response.headers
-        if response.status_code == 200:
+    if response.status_code == 200:
         return response.text
 
     print(f"확인 필요! status code: {response.status_code}")

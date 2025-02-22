@@ -13,14 +13,15 @@ from common_utils import (
     save_s3_bucket_by_parquet,
     upsert_post_tracking_data,
     get_details_to_parse,
+    update_status_failed,
     update_status_banned,
     update_status_changed,
     update_status_unchanged,
     update_changed_stats,
     analyze_post_with_gpt,
     get_my_ip,
-    get_proxy_ip,
-    return_proxy_ip,
+    requestPage,
+    requestPageProxy
 )
 
 SEARCH_TABLE = "probe_clien"
@@ -82,33 +83,12 @@ def detail(event, context):
         post_url = post["url"]
         REQUEST_REST = 1 + random.random()
         
-        response = requests.get(post_url, headers=headers, allow_redirects=False)
-        isBanned = response.status_code != 200
-        if isBanned:
-            print("[INFO] clienDetail: 기본 ip 차단, 프록시 ip 접속 시도")
-        while isBanned:
-            proxy = get_proxy_ip("clien")
-            if proxy is None:
-                #isBanned = True
-                break
-            try:
-                response = requests.get(post_url, headers=headers, proxies=proxy, allow_redirects=False)
-            except Exception as e:
-                print(f"[INFO] 프록시 오류 발생: {e}")
-                return_proxy_ip(proxy["http"], "clien", isBanned=True, isTimeout=True)
-                continue
-            isBanned = response.status_code != 200
-            return_proxy_ip(proxy["http"], "clien", isBanned, isTimeout=False)
-        
-        if isBanned:
-            return_dict["status_code"] = 403
-            return_dict["body"] = "[WARNING] DETAIL/clien IP 차단"
-            update_status_banned(conn, table_name, post['url'])   
-            break
-        
-        response.encoding = 'utf-8'
-        # update_status_unchanged(conn, table_name, post['url'])
-        soup = BeautifulSoup(response.content, "html.parser")
+        content = requestPageProxy("clien", requests.get, url=post_url, allow_redirects=False, timeout=3)
+        if content is None:
+            update_status_banned(conn, table_name, post_url, checked_at)
+            continue
+
+        soup = BeautifulSoup(content, "html.parser")
 
         comments_raw = soup.find_all("div", class_="comment_row")
         all_comments = []
@@ -117,22 +97,27 @@ def detail(event, context):
                 
             if "blocked" in row.get("class", []):
                 continue  # 차단된 댓글 제외
+            
+            try:
+                comment_content = row.find("div", class_="comment_view").get_text(separator="\n", strip=True)
+                comment_created_at = row.find("span", class_="timestamp").get_text(strip=True)
+                comment_created_at = re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", comment_created_at).group(0)
+                comment_created_at = datetime.strptime(comment_created_at, "%Y-%m-%d %H:%M:%S")
 
-            comment_content = row.find("div", class_="comment_view").get_text(separator="\n", strip=True)
-            comment_created_at = row.find("span", class_="timestamp").get_text(strip=True)
-            comment_created_at = re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", comment_created_at).group(0)
-            comment_created_at = datetime.strptime(comment_created_at, "%Y-%m-%d %H:%M:%S")
+                comment_like = row.find("div", class_="comment_content_symph")
+                comment_like = comment_like.find("strong").text if comment_like else "0"
 
-            comment_like = row.find("div", class_="comment_content_symph")
-            comment_like = comment_like.find("strong").text if comment_like else "0"
-
-            comment_data = {
-                "created_at": comment_created_at,
-                "content": comment_content,
-                "like": comment_like,
-                "dislike": None
-            }
-            all_comments.append(comment_data)
+                comment_data = {
+                    "created_at": comment_created_at,
+                    "content": comment_content,
+                    "like": comment_like,
+                    "dislike": None
+                }
+            except Exception as e:
+                print(f"[INFO] clien detail: 댓글 크롤링 실패 - {e}")
+                continue
+            else: 
+                all_comments.append(comment_data)
 
         try: 
             hit = soup.find("div", class_="post_author").find("span", class_="view_count").find("strong").text
@@ -140,27 +125,31 @@ def detail(event, context):
         except: 
             hit = post["view"]
         
-        post_data = {
-            "title": soup.find("h3", class_="post_subject").find_all("span")[0].text,
-            "post_id": post["post_id"],
-            "url": post_url,
-            "content": soup.find("div", class_="post_article").get_text(separator="\n", strip=True),
-            "view": hit,
-            "created_at": post["created_at"],
-            "like": int(soup.find("a", class_="symph_count").find("strong").text if soup.find("a", class_="symph_count") else "0"),
-            "dislike": None,
-            "comment_count": int(soup.find("a", class_="post_reply").find("span").text if soup.find("a", class_="post_reply") else "0"),
-            "keywords": post["keywords"],
-            "comment": all_comments
-        }
-        
+        try:
+            post_data = {
+                "title": soup.find("h3", class_="post_subject").find_all("span")[0].text,
+                "post_id": post["post_id"],
+                "url": post_url,
+                "content": soup.find("div", class_="post_article").get_text(separator="\n", strip=True),
+                "view": hit,
+                "created_at": post["created_at"],
+                "like": int(soup.find("a", class_="symph_count").find("strong").text if soup.find("a", class_="symph_count") else "0"),
+                "dislike": None,
+                "comment_count": int(soup.find("a", class_="post_reply").find("span").text if soup.find("a", class_="post_reply") else "0"),
+                "keywords": post["keywords"],
+                "comment": all_comments
+            }
+        except Exception as e:
+            print(f"[INFO] clien detail: 게시글 크롤링 실패 - {e}")
+            update_status_failed(conn, table_name, post_url, checked_at)
+            continue
         futures.append(analysis_executor.submit(analyze_post_with_gpt, post_data))
         executing += 1
-        time.sleep(REQUEST_REST)
+        #time.sleep(REQUEST_REST)
         
-        if context.get_remaining_time_in_millis() < REMAINING_TIME_LIMIT:
-            print(f"[INFO] clien detail: 실행시간이 {REMAINING_TIME_LIMIT}ms 보다 덜 남아서 디테일 파싱을 중지합니다.")
-            break
+        #if context.get_remaining_time_in_millis() < REMAINING_TIME_LIMIT:
+        #    print(f"[INFO] clien detail: 실행시간이 {REMAINING_TIME_LIMIT}ms 보다 덜 남아서 디테일 파싱을 중지합니다.")
+        #    break
 
         # as_completed를 Request_rest만큼 대기
         # 일단 gpt 처리된 것은 처리
@@ -205,4 +194,5 @@ def detail(event, context):
             "status_code": 200,
             "body": "[INFO] DETAIL / S3 저장 성공"
         }
-    
+
+detail({'id':1 , "checked_at": "2000-01-01T19:01:01"}, None)
