@@ -127,6 +127,8 @@ def detail(event, context):
             hit = post["view"]
         
         post_data = {
+            "checked_at": checked_at,
+            "platform": "clien",
             "title": soup.find("h3", class_="post_subject").find_all("span")[0].text,
             "post_id": post["post_id"],
             "url": post_url,
@@ -137,7 +139,8 @@ def detail(event, context):
             "dislike": None,
             "comment_count": int(soup.find("a", class_="post_reply").find("span").text if soup.find("a", class_="post_reply") else "0"),
             "keywords": post["keywords"],
-            "comment": all_comments
+            "comment": all_comments,
+            'status': 'UNCHANGED'
         }
         
         futures.append(analysis_executor.submit(analyze_post_with_gpt, post_data))
@@ -186,3 +189,4 @@ def detail(event, context):
         "status_code": 200,
         "body": "[INFO] DETAIL / S3 저장 성공"
     }
+detail({'id': 1, 'checked_at':'2000-01-01T19:00:01'},None)
