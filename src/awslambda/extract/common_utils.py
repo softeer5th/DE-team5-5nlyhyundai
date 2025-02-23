@@ -734,7 +734,7 @@ def analyze_post_with_gpt(post):
         )
 
         gpt_output = response.choices[0].message.content.strip()
-        print(f"📌 GPT 응답 내용: {gpt_output}")
+        # print(f"📌 GPT 응답 내용: {gpt_output}")
 
         if not gpt_output:
             raise ValueError("GPT 응답이 비어 있습니다.")

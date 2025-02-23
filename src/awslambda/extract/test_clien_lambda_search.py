@@ -60,7 +60,7 @@ def search(event, context):
         }
 
     isNextPage = True
-    p = 36
+    p = 29
 
     while isNextPage:
     #for p in range(10):
@@ -86,7 +86,7 @@ def search(event, context):
         soup = BeautifulSoup(response.content, "html.parser")
         if not soup.find("a", class_="board-nav-page active"):
             break
-
+        
         posts_raw = soup.find_all("div", class_="list_item symph_row jirum")
         for post in posts_raw:
             
