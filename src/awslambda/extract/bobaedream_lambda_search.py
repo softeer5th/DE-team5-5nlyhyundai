@@ -2,7 +2,7 @@ import re
 from typing import List, Dict, Optional
 from datetime import datetime, timezone, timedelta
 import time
-from urllib.parse import urlencode
+import random
 
 import requests
 from bs4 import BeautifulSoup
@@ -120,10 +120,10 @@ def parse_search(
                 if spans[0].text == 'news':
                     print(f"뉴스: {title}, url: {payload['url']}")
                     # continue
-                payload['category'] = spans[0].text
-                payload['writer'] = spans[1].text
                 payload['post_id'] = url.split('No=')[1]
                 payload['post_id'] = post_id_salt(payload['post_id'], payload['category'])
+                payload['category'] = spans[0].text
+                payload['writer'] = spans[1].text
                 created_at = spans[2].text
             except Exception as e:
                 print(f"span 태그가 없습니다. : {e}")
@@ -139,13 +139,22 @@ def parse_search(
                     print(f'[INFO] 기간이 더 뒤이기에 넘어갑니다. {end_dt} / 게시글 날짜: {created_at_dt}')
                     continue
                 
-                if created_at_dt < start_dt:
+                elif created_at_dt < start_dt:
                     print(f'[INFO] 기간이 더 앞이기에 종료합니다. {start_dt} / 게시글 날짜: {created_at_dt}')
                     return True
 
                 if payload['category'] == '내차사진':
                     print(f'[WARNING] 내차사진이어서 스킵합니다. {title}')
                     continue
+                
+                elif '유머' in payload['category']:
+                    print(f'[WARNING] 유머여서 스킵합니다. {title}')
+                    continue
+
+                # elif '자유' in payload['category']:
+                #     print(f'[WARNING] 내차사진이어서 스킵합니다. {title}')
+                #     continue
+                
             
             payload['view'] = -999 # 반드시 업데이트되게끔 설정함. # 보배드림 특이 케이스임. (int여야 함!)
             payload['comment_count'] = -999 # 반드시 업데이트되게끔 설정함. # 보배드림 특이 케이스임. (int여야 함!)
@@ -153,11 +162,12 @@ def parse_search(
             payload['keyword'] = keyword
             # DB에 변경사항 저장
             # comment_count, view를 확인할 수 있으면 바로 업데이트.
-            upsert_post_tracking_data(
-                    conn=conn,
-                    table_name=table_name,
-                    payload=payload
-                )
+            if random.randint(1, 4) == 1: # 25% 확률로 업데이트. 너무 많음.
+                upsert_post_tracking_data(
+                        conn=conn,
+                        table_name=table_name,
+                        payload=payload
+                    )
 
 def lambda_handler(event, context):
     """
@@ -181,7 +191,7 @@ def lambda_handler(event, context):
     # 게시글 시작 날짜
     start_date = event.get('start_date')
     if start_date is None:
-        start_dt = checked_at - timedelta(days=14)
+        start_dt = checked_at - timedelta(days=3)
     else:
         start_dt = datetime.strptime(start_date, '%Y-%m-%d')
         # start_dt = start_dt.replace(tzinfo=timezone.utc)  # UTC로 변환
@@ -198,14 +208,14 @@ def lambda_handler(event, context):
     
     # 검색할 키워드
     keyword = event.get('keyword')
-    for i in range(1, 1000):
+    for i in range(1, 10):
         html = extract_bobaedream(start_date, page_num=i, keyword=keyword)
         # save_html('htmls/search', html)
         if html is None:
             raise Exception("bobae search: 403 - [WARNING] SEARCH / 보배드림 IP 차단됨!")
             return {
                 "status_code": 403,
-                "body": "[WARNING] SEARCH / 보배드림(platform으로 대체) IP 차단됨!"
+                "body": "[WARNING] SEARCH / 보배드림 IP 차단됨!"
             }
         result = parse_search(html, start_dt=start_dt, end_dt=end_dt, checked_at=checked_at, keyword=keyword)   
         if result == 404:

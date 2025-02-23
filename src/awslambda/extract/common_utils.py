@@ -710,19 +710,31 @@ def analyze_post_with_gpt(post):
         댓글:
         {comment_texts}
 
-        분석할 내용:
-        1. **게시글 감정 분석**: 게시글의 감정을 title와 content를 이용해서 '벤츠'라는 단어를 기준으로 '긍정/부정/중립' 중 하나로 판단하세요.
-        2. **댓글 감정 분석**: 각 댓글의 감정을 title, content, comment_texts와 게시글 감정을 참고하여 '벤츠'라는 단어를 기준으로 '긍정/부정/중립'으로 분류하세요.
+        분석 기준:
+        - '현대/현차/현기'는 동일한 기업을 지칭합니다
+        - '아이오닉9'은 현대자동차의 전기차 모델입니다
+        - 긍정적인 감정: 현대/현차/현기/아이오닉9에 대해 전반적으로 긍정적인 언급이 있는 경우
+        - 부정적인 감정: 현대/현차/현기/아이오닉9에 대해 전반적으로 부정적인 언급이 있는 경우
+        - 중립: 단순 정보 공유나 중립적 언급, 관련없는 내용인 경우
 
-        **반드시 JSON 형식으로 답변하세요.**
-        JSON 형식:
-        {{
-            "게시글 감정": "positive/negative/neutral",
-            "comment_sentiments": [
-                {{"내용": "댓글1 내용", "감정": "positive/negative/neutral"}},
-                {{"내용": "댓글2 내용", "감정": "positive/negative/neutral"}}
+        분석할 내용:
+        1. **게시글 감정 분석**: 제목과 본문의 전반적인 톤을 분석해 위 기준에 따라 'postive/negative/neutral' 중 하나로 분류하세요.
+        2. **댓글 감정 분석**: 각 댓글을 독립적으로 분석하되, 게시글 맥락을 참고하여 위 기준에 따라 'postive/negative/neutral' 중 하나로 분류하세요.
+
+        **반드시 아래 JSON 형식으로 답변하고, 분석 근거도 포함해주세요.**
+        {
+            "게시글_감정": {
+                "판정": "positive/negative/neutral",
+                "근거": "판단 근거 서술"
+            },
+            "댓글_분석": [
+                {
+                    "내용": "댓글1 내용",
+                    "감정": "positive/negative/neutral",
+                    "근거": "판단 근거 서술"
+                }
             ]
-        }}
+        }
         """
 
         response = openai.chat.completions.create(
@@ -745,11 +757,11 @@ def analyze_post_with_gpt(post):
             return post
 
         # 게시글 감정 분석 결과 추가
-        post["sentiment"] = analysis_result.get("게시글 감정", "neutral")
+        post["sentiment"] = analysis_result.get("게시글_감정", "neutral")
 
         # 댓글 감정 분석 결과 추가
-        if "comment_sentiments" in analysis_result:
-            for com, gpts in zip(post["comment"], analysis_result["comment_sentiments"]):
+        if "댓글_분석" in analysis_result:
+            for com, gpts in zip(post["comment"], analysis_result["댓글_분석"]):
                 com["sentiment"] = gpts["감정"]
 
         return post
