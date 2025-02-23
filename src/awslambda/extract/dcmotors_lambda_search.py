@@ -26,7 +26,6 @@ DCINSIDE_URL = "https://gall.dcinside.com"
 
 # ✅ 직접 설정할 변수들
 max_pages = 20  # 🔹 각 search_pos에서 최대 몇 개의 페이지를 탐색할지 설정
-keyword_list = ["벤츠"]  # 🔹 검색할 키워드 리스트
 
 # ✅ Lambda Handler 함수
 def lambda_handler(event, context):
