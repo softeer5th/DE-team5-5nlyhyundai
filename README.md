@@ -7,14 +7,14 @@
 
 # 데이터 파이프라인
 [이미지 링크 주소]
-* extract
+* [extract](https://github.com/softeer5th/DE-team5-5nlyhyundai/tree/Documentaion/src/awslambda/extract)
 
   디시인사이드, 클리앙, 보배드림 커뮤니티 텍스트 데이터를 크롤링 해 옵니다.
   Search 단계에서는 게시판 게시글 목록을 읽어와서 데이터 베이스에 저장합니다.
   Detail 단계에서는 데이터 베이스에 있는 게시글 정보를 읽어와 게시글 url에 직접 접근하여 데이터를 수집하고 저장합니다.
   Detail 단계에서 gpt api를 이용한 감성 분석도 함께 실시되고, 멀티 스레드를 통해 데이터 추출과 감성 분석을 병렬 처리할 수 있도록 합니다.
 
-* Transform
+* [Transform](https://github.com/softeer5th/DE-team5-5nlyhyundai/tree/Documentaion/src/emr)
 
   배치처리 완료 시각(checked_at) 기반의 폴더명으로 분산 처리로 인해 쪼개진 모든 parquet 파일들을 불러오고, 이들을 합칩니다.
   추출한 데이터를 가지고 checked_at 기반의 연산을 진행합니다.
