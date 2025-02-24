@@ -9,12 +9,19 @@
 크롤러를 돌리기 위해 Postgres 데이터 베이스가 필요합니다. 이를 위한 환경 설정이 필요합니다.
 * .env.lambda 파일을 만들어서 다음 내용을 기입하시기 바랍니다.
 > DB_HOST=
+>
 > DB_NAME=
+>
 > DB_USER=
+>
 > DB_PASSWORD=
+>
 > DB_PORT=
+>
 > VIEW_THRESHOLD=100 (기존 게시물 조회수와 새로 읽은 게시물의 조회수가 여기 적힌 수보다 차이가 크면 게시물의 조회수를 업데이트 합니다.)
+>
 > S3_BUCKET= (자료가 저장될 버켓 이름입니다.)
+>
 > OPENAI_API_KEY= (본 모델에서는 감정 분석을 위해 CHAT GPT를 사용합니다.)
 
 * 데이터 베이스를 열고 본 리포지토리 /rds/create_table.sql에 적힌 쿼리를 실행합니다.
@@ -35,7 +42,7 @@ docker buildx build --platform linux/amd64 --provenance=false --push -f selenium
 
 * 문제 해결
 
-만약 ECR에 푸쉬 중 AWS에 로그인이 되어있지 않다는 이야기가 뜨면 다음 코드로 로그인 합니다.
+만약 ECR에 푸쉬 중 AWS에 로그인이 되어있지 않다는 메시지가 뜨면 다음 코드로 로그인 합니다.
 
 ```bash
 aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin {ECR 주소}
@@ -45,21 +52,15 @@ aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS
 
 3. AWS Lambda 서비스에 다음 이름과 CMD를 가진 람다를 설정합니다.
 
-|-------------------|----------|-----------------------------------------|
+
 | 람다 이름           | 람다 이미지 | 람다 CMD 오버라이드                         |
 |-------------------|----------|-----------------------------------------|
 | clienSearch       | requests | clien_lambda_search.search              |
-|-------------------|----------|-----------------------------------------|
 | clienDetail       | requests | clien_lambda_search.detail              |
-|-------------------|----------|-----------------------------------------|
 | dcmotors_search   | requests | dcmotors_lambda_search.lambda_handler   |
-|-------------------|----------|-----------------------------------------|
 | dcmotors_detail   | selenium | (오버라이딩이 필요 없습니다)                   |
-|-------------------|----------|-----------------------------------------|
 | bobaedream-search | requests | bobaedream_lambda_search.lambda_handler |
-|-------------------|----------|-----------------------------------------|
-| bobaedream-detail | reqeusts | bobaedream_lambda_detail.lambda_handler |
-|-------------------|----------|-----------------------------------------|
+| bobaedream-detail | requests | bobaedream_lambda_detail.lambda_handler |
 
 각 람다별 요구 메모리 사양은 다음과 같습니다:
 |----------|---------------|
