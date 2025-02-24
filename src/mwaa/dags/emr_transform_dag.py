@@ -20,11 +20,11 @@ def checked_at_checker(**context):
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
-    'start_date': datetime(2025, 2, 14),
+    'start_date': datetime(2025, 2, 24),
     'email_on_failure': True,
     'email_on_retry': False,
     'retries': 0,
-    'retry_delay': timedelta(seconds=30),  # 빠른 재시도를 위해 30초로 설정
+    'retry_delay': timedelta(seconds=60),  # 빠른 재시도를 위해 30초로 설정
     'execution_timeout': timedelta(minutes=5)  # 5분 제한 설정
 }
 
@@ -47,7 +47,7 @@ with DAG(
     # EMR 작업에서 사용
     emr_task = EmrAddStepsOperator(
         task_id='spark-job',
-        job_flow_id=Variable.get("EMR_JOB_FLOW_ID"),
+        job_flow_id=Variable.   get("EMR_JOB_FLOW_ID"),
         aws_conn_id='aws_default',
         wait_for_completion=True,
         do_xcom_push=True, # if True, job_flow_id is pushed to XCom with key job_flow_id.        
@@ -60,18 +60,22 @@ with DAG(
                     'Args': [
                         'spark-submit', 
                         '--deploy-mode', 'cluster',
-                        '--conf', 'spark.yarn.maxAppAttempts=2',  # YARN 레벨의 재시도 설정
-                        '--conf', 'spark.task.maxFailures=2',     # Spark 태스크 레벨의 재시도 설정
-                        '--conf', 'yarn.app.attempt.failure.validity.interval=30s',  # 30초 간격으로 설정
+                        '--conf', 'spark.yarn.maxAppAttempts=4',  # YARN 레벨의 재시도 설정
+                        '--conf', 'spark.task.maxFailures=4',     # Spark 태스크 레벨의 재시도 설정
+                        "--conf","spark.hadoop.fs.s3a.connection.timeout=600000",
+                        "--conf","spark.hadoop.fs.s3a.socket.timeout=600000",
+                        "--conf","spark.hadoop.fs.s3a.connection.establish.timeout=600000",
+                        "--conf","spark.hadoop.fs.s3a.connection.maximum=10000",
+                        "--conf","spark.hadoop.fs.s3a.read.timeout=600000",
+                        "--conf","spark.hadoop.fs.s3a.connection.ssl.enabled=true",
+                        "--conf","spark.hadoop.fs.s3a.attempts.maximum=100",
                         Variable.get("JOB_SCRIPT_PATH"), #'s3://transform-emr/EMR-2.py'
                         '--checked_at', "{{ task_instance.xcom_pull(task_ids='checked_at_checker', key='checked_at') }}",
                     ]
                 }
             }
         ],
-        retry_delay=timedelta(seconds=30),  # 재시도 간격
-        retries=2,  # 최대 재시도 횟수
-        # 재시도 2*2 = 4회.
+        retries=0,  # 최대 재시도 횟수
     )
 
     trigger_s3_redshift_dag = TriggerDagRunOperator(

@@ -29,6 +29,7 @@ def checked_at_checker(**context):
     s3_summary_key = f"benz_output/summary/{date}/{hour}/{minute}/summary"
     print(f"[INFO] s3_summary_key: {s3_summary_key}")
     context['task_instance'].xcom_push(key='s3_summary_key', value=s3_summary_key)
+    return checked_at
 
 # DAG 기본 설정
 default_args = {
