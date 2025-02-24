@@ -78,7 +78,7 @@ aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS
 
 ## 실행 로직
 
-5nly HYUNDAI 팀의 Extract 로직은 다음과 크게 다음과 같은 형식으로 작동합니다:
+5nly HYUNDAI 팀의 Extract 로직은 다음과 같은 형식으로 작동합니다:
 
 1. Search page crawling
 > 게시판의 게시글 목록이 나와있는 페이지를 서치 페이지(Search Page)로 명명합니다.
