@@ -88,7 +88,7 @@ def parse_post_meta(post, post_meta):
         posting_datetime = clean_date_string(date_str)
     except Exception as e:
         print(f"[ERROR] 날짜 파싱 실패: {e}")
-        posting_datetime = datetime.strptime('0000-01-01', '%Y-%m-%d')
+        posting_datetime = post['created_at']
     post['view'] = view
     post['like'] = like # like 등은 여기서 처리해야 함.        
     post['dislike'] = None

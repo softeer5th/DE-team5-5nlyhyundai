@@ -146,7 +146,7 @@ def detail(event, context):
         
         futures.append(analysis_executor.submit(analyze_post_with_gpt, post_data))
         executing += 1
-        #time.sleep(REQUEST_REST)
+        time.sleep(REQUEST_REST)
         
         if context.get_remaining_time_in_millis() < REMAINING_TIME_LIMIT:
              break
