@@ -20,11 +20,11 @@
   추출한 데이터를 가지고 checked_at 기반의 연산을 진행합니다.
   사고, 결함, 경쟁사, 경쟁 모델을 키워드로 지정하여 검색어와 함께 이들이 얼마나 언급이 되는지 연산합니다.
 
-* Load
+* [Load](https://github.com/softeer5th/DE-team5-5nlyhyundai/blob/Documentaion/readmeSrc/redshiftReadMe.md)
 
-  게시글, 댓글, 그리고 checked_at을 기준으로 연산이 완료된 데이터를 Redshift에 post, comment, summary라는 이름으로 적재합니다.
+  EMR을 통해 처리된 데이터를 S3를 거쳐 Redshift에 로드합니다. 게시글, 댓글, 그리고 checked_at을 기준으로 연산이 완료된 데이터를 Redshift에 post, comment, summary라는 이름으로 적재합니다.
 
-* Visualize
+* [Visualize](https://github.com/softeer5th/DE-team5-5nlyhyundai/tree/Documentaion/src/superset)
 
   Redshift와 SuperSet을 연동하여 시각화를 진행합니다.
   대시보드에는 실시간 탭과 종합 분석 탭이 존재합니다.
@@ -35,3 +35,5 @@
 
   프로젝트 전체 과정을 관리합니다.
   일정 배치 주기(5분)마다 Extract, Transform, Load 과정을 호출하고, 이를 통해 데이터 파이프라인을 관리합니다.
+
+위에 나열된 각 요소의 설정을 마치면 5nly HYUNDAI 팀의 데이터 파이프라인을 구성할 수 있습니다.
