@@ -16,7 +16,7 @@
 
 * [Transform](https://github.com/softeer5th/DE-team5-5nlyhyundai/tree/Documentaion/src/emr)
 
-  배치처리 완료 시각(checked_at) 기반의 폴더명으로 분산 처리로 인해 쪼개진 모든 parquet 파일들을 불러오고, 이들을 합칩니다.
+  배치처리 시작 시각(checked_at) 기반의 폴더명으로 분산 처리로 인해 쪼개진 모든 parquet 파일들을 불러오고, 이들을 합칩니다.
   추출한 데이터를 가지고 checked_at 기반의 연산을 진행합니다.
   사고, 결함, 경쟁사, 경쟁 모델을 키워드로 지정하여 검색어와 함께 이들이 얼마나 언급이 되는지 연산합니다.
 
