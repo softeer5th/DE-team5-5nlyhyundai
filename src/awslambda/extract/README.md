@@ -89,4 +89,4 @@ aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS
 > 디테일 페이지를 읽고 서치 페이지 내용에 더해 디테일 페이지에서 얻을 수 있는 글 제목, 내용, 댓글 내용등을 수집해서 AWS S3에 Parquet 형식으로 저장합니다.
 
 3. 실행 제어
-> 본 람다들은 AWS MWAA, 에어 플로우(Air Flow)로 관리됩니다.
+> 본 람다들은 AWS MWAA, 에어플로우(Airflow)로 관리됩니다.
