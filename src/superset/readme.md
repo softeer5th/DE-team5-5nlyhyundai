@@ -22,7 +22,19 @@ EC2에 슈퍼셋을 설치하는 흐름은 다음과 같습니다.
 
 도커 설치 -> 도커 컴포즈 설치 -> 슈퍼셋 다운로드 -> 슈퍼셋 설정 -> 도커 컴포즈로 슈퍼셋 설치 및 실행
 
+0. EC2 연결
+
+터미널을 키고 cd, ls(윈도우는 dir)등의 명령어를 이용해 ssh키를 발급받은 디렉토리로 이동합니다.
+
+해당 디렉토리에서 다음을 수행합니다.
+
+```bash
+chmod 400 "발급받은 키"
+ssh -i "발급받은 키" ec2-user@[EC2 주소]
+```
+
 1. 도커 설치
+
 도커를 설치합니다.
 ```bash
 sudo amazon-linux-extras install docker
@@ -34,12 +46,19 @@ sudo service docker start
 sudo systemctl enable docker
 ```
 
+현재 사용자를 도커 그룹에 추가하여 sudo 명령어 없이도 도커 명령어를 실행할 수 있도록 합니다.
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
 도커가 정상 설치 되었는지 버전을 확인합니다
 ```bash
 docker --version
 ```
 
 2. 도커 컴포즈 설치
+
 다음 명령어로 도커 컴포즈를 설치합니다.
 ```bash
 sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
@@ -51,7 +70,8 @@ sudo chmod +x /usr/local/bin/docker-compose
 docker-compose --version
 ```
 
-3. 슈퍼셋 다운로드
+3. 슈퍼셋 
+
 슈퍼셋을 다운로드 받기 위해 wget을 설치합니다.
 ```bash
 sudo yum install wget
@@ -80,17 +100,53 @@ cd superset-master
 ```
 
 4. 슈퍼셋 설정
+
 해당 설정을 건너뛰고 바로 5. 도커 컴포즈로 슈퍼셋 설치 및 실행으로 가도 좋습니다. 다만, 4번에서 하고자 하는 것은 이메일 알림을 위해 슈퍼셋 설정을 설치 전에 수정하는 것입니다.
 
+```bash
+vim ./docker/pythonpath_dev/superset_config.py
+```
+vim 등의 문서 작업 툴로 다음 파일을 수정합니다.
+* ./docker/pythonpath_dev/superset_config.py
+
+  45번 줄 근방에 다음을 추가합니다.
+```python
+SMTP_HOST = 'smtp.gmail.com' # Gmail로 메일을 보낼 경우입니다.
+SMTP_STARTTLS = True    # TLS 프로토콜을 사용합니다
+SMTP_SSL = False        # SSL 프로토콜은 사용하지 않습니다.
+SMTP_USER = '당신의 gmail 주소'
+SMTP_PORT = 587         # TLS 기본 프로토콜입니다.
+SMTP_PASSWORD = '구글 앱 비밀번호를 발급받아 사용합니다.'
+SMTP_MAIL_FROM = '당신의 gmail 주소'
+```
+  ** 구글 앱 비밀번호 사이의 공백은 ascii 문자가 아니라서 그대로 복사 붙여넣기 하면 ascii 문제 코덱 에러 뜹니다. visual code 등에 붙여넣기 해서 공백 문자를 지우고 다시 스페이스바로 ascii 공백문자를 추가해주시기 바랍니다. **
+
+* 다음을 부분을 수정하거나 추가합니다
+
+```python
+import uuid # 26번줄 근방
+FEATURE_FLAGS = {"ALERT_REPORTS": True, "DATE_FORMAT_IN_EMAIL_SUBJECT":True}    # 109번 줄 근방
+ALERT_REPORTS_NOTIFICATION_DRY_RUN = True   # 110번 줄 근방
+WEBDRIVER_BASEURL = "http://(EC2 도메인):8088/"  # 111번 줄 근방
+WEBDRIVER_TYPE = "chrome"   # 116번줄 근방에 추가
+WEBDRIVER_OPTION_ARGS = [
+    "--headless", "--disable-gpu", "--window-size=1920x1080", f"--user-data-dir=/tmp/chrome-user-data-{uuid.uuid4()}"
+]   # 윗 줄에 이어서 추가
+```
+위의 같은 파일 이곳 저곳에 퍼져 있습니다. 잘 찾아서 수정해주시기 바랍니다.
+
+* 에러: 메일을 보내는데 셀레니움-크롬으로 이미지를 찍을 수 없는 버그가 있어 사진을 찍을 수 없습니다. 해결이 필요합니다.
+
 5. 도커 컴포즈로 슈퍼셋 설치 및 실행
+
 수퍼셋 이미지를 빌드합니다.
 ```bash
-docker-compose -f docker-compose.yml build
+docker-compose -f docker-compose-non-dev.yml build
 ```
 
 수퍼셋 이미지를 켭니다.
 ```bash
-docker-compose -f docker-compose.yml up -d
+docker-compose -f docker-compose-non-dev.yml up -d
 ```
 
 맨 마지막에 오는 -d는 선택사항입니다. 슈퍼셋 로그를 라이브로 보고싶다면 -d 옵션을 붙이지 않아도 됩니다.
@@ -100,7 +156,7 @@ docker-compose -f docker-compose.yml up -d
 * -d 옵션을 붙이지 않았다면, "ctrl + C" 입력으로 슈퍼셋을 종료할 수 있습니다.
 * -d 옵션을 붙이고 실행했다면 다음 명령어를 입력하여 슈퍼셋 종료가 가능합니다.
 ```bash
-docker-compose -f docker-compse.yml down
+docker-compose -f docker-compse-non-dev.yml down
 ```
 
 ### 슈퍼셋과 데이터 베이스 연결하기
