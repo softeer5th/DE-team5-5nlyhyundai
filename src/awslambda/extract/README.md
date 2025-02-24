@@ -63,13 +63,11 @@ aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS
 | bobaedream-detail | requests | bobaedream_lambda_detail.lambda_handler |
 
 각 람다별 요구 메모리 사양은 다음과 같습니다:
-|----------|---------------|
+
 | 람다 이미지 | 요구 메모리 (MB) |
 |----------|---------------|
 | requests | 256           |
-|----------|---------------|
 | selenium | 1024          |
-|----------|---------------|
 
 각 람다는 실행 목적을 달성하면 미리 종료되지만 안정성을 위해 15분으로 설정해주시기 바랍니다.
 
