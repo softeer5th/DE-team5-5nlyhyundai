@@ -74,6 +74,8 @@ aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS
 * 이름이 Detail로 끝나는 람다는 IAM 권한 중 S3에 접속하는 권한이 필요합니다.
 * 이상의 작업을 AWS 콘솔에서 진행합니다.
 
+4. 람다 결과물을 저장할 S3 버켓을 설정합니다.
+
 
 
 ## 실행 로직
