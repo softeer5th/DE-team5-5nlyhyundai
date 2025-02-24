@@ -266,19 +266,17 @@ def get_details_to_parse(
             sql = f"""
             UPDATE {table_name}
             SET status = 'UNCHANGED'
-            WHERE (
-                status = 'CHANGED'
-                OR (status = 'BANNED' and NOW() - checked_at > INTERVAL '1 hour')
-            ) AND id IN (
+            WHERE id IN (
                 SELECT id 
                 FROM {table_name}
                 WHERE (
                     status = 'CHANGED' 
-                    OR status = 'BANNED'
-                )
+                    OR (status = 'BANNED' and NOW() - checked_at > INTERVAL '1 hour')
+                ) FOR UPDATE SKIP LOCKED
                 LIMIT {total_rows}
             )
-            RETURNING *
+            RETURNING *;
+            ;
             """
             cursor.execute(sql)
             
@@ -722,19 +720,14 @@ def analyze_post_with_gpt(post):
         2. **댓글 감정 분석**: 각 댓글을 독립적으로 분석하되, 게시글 맥락을 참고하여 위 기준에 따라 'postive/negative/neutral' 중 하나로 분류하세요.
 
         **반드시 아래 JSON 형식으로 답변하고, 분석 근거도 포함해주세요.**
-        {
-            "게시글_감정": {
-                "판정": "positive/negative/neutral",
-                "근거": "판단 근거 서술"
-            },
+        **반드시 JSON 형식으로 답변하세요.**
+        JSON 형식:
+        {{
+            "게시글 감정": "positive/negative/neutral",
             "댓글_분석": [
-                {
-                    "내용": "댓글1 내용",
-                    "감정": "positive/negative/neutral",
-                    "근거": "판단 근거 서술"
-                }
-            ]
-        }
+                {{"내용": "댓글1 내용", "감정": "positive/negative/neutral"}},
+                {{"내용": "댓글2 내용", "감정": "positive/negative/neutral"}}
+        }}
         """
 
         response = openai.chat.completions.create(

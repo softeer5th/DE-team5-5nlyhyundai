@@ -18,15 +18,15 @@ from common_utils import (
 )
 linebreak_ptrn = re.compile(r'(\n){2,}')  # 줄바꿈 문자 매칭
 
-def extract_bobaedream(start_date, page_num, keyword) -> Optional[str]:
-    print(f"시작 날짜 및 시간: {start_date.strftime('%y.%m.%d')}")
+def extract_bobaedream(start_dt, page_num, keyword) -> Optional[str]:
+    print(f"시작 날짜 및 시간: {start_dt.strftime('%y.%m.%d')}")
     form_data = {
         "keyword": keyword,
         "colle": "community",
         "searchField": "ALL",
         "page": page_num,
         "sort": "DATE",
-        'startDate': start_date.strftime('%y.%m.%d'),
+        'startDate': '',
     }
     # data = urlencode(form_data)
     data = form_data
@@ -120,10 +120,10 @@ def parse_search(
                 if spans[0].text == 'news':
                     print(f"뉴스: {title}, url: {payload['url']}")
                     # continue
-                payload['post_id'] = url.split('No=')[1]
-                payload['post_id'] = post_id_salt(payload['post_id'], payload['category'])
                 payload['category'] = spans[0].text
                 payload['writer'] = spans[1].text
+                payload['post_id'] = url.split('No=')[1]
+                payload['post_id'] = post_id_salt(payload['post_id'], payload['category'])
                 created_at = spans[2].text
             except Exception as e:
                 print(f"span 태그가 없습니다. : {e}")
@@ -162,12 +162,12 @@ def parse_search(
             payload['keyword'] = keyword
             # DB에 변경사항 저장
             # comment_count, view를 확인할 수 있으면 바로 업데이트.
-            if random.randint(1, 4) == 1: # 25% 확률로 업데이트. 너무 많음.
-                upsert_post_tracking_data(
-                        conn=conn,
-                        table_name=table_name,
-                        payload=payload
-                    )
+            # if random.randint(1, 4) == 1: # 25% 확률로 업데이트. 너무 많음.
+            upsert_post_tracking_data(
+                    conn=conn,
+                    table_name=table_name,
+                    payload=payload
+                )
 
 def lambda_handler(event, context):
     """
