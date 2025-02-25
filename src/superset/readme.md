@@ -119,23 +119,44 @@ SMTP_PORT = 587         # TLS 기본 프로토콜입니다.
 SMTP_PASSWORD = '구글 앱 비밀번호를 발급받아 사용합니다.'
 SMTP_MAIL_FROM = '당신의 gmail 주소'
 ```
-  ** 구글 앱 비밀번호 사이의 공백은 ascii 문자가 아니라서 그대로 복사 붙여넣기 하면 ascii 문제 코덱 에러 뜹니다. visual code 등에 붙여넣기 해서 공백 문자를 지우고 다시 스페이스바로 ascii 공백문자를 추가해주시기 바랍니다. **
+  _구글 앱 비밀번호 사이의 공백은 ascii 문자가 아니라서 그대로 복사 붙여넣기 하면 ascii 문제 코덱 에러 뜹니다. visual code 등에 붙여넣기 해서 공백 문자를 지우고 다시 스페이스바로 ascii 공백문자를 추가해주시기 바랍니다._
 
 * 다음을 부분을 수정하거나 추가합니다
 
 ```python
-import uuid # 26번줄 근방
 FEATURE_FLAGS = {"ALERT_REPORTS": True, "DATE_FORMAT_IN_EMAIL_SUBJECT":True}    # 109번 줄 근방
-ALERT_REPORTS_NOTIFICATION_DRY_RUN = True   # 110번 줄 근방
+ALERT_REPORTS_NOTIFICATION_DRY_RUN = False   # 110번 줄 근방
 WEBDRIVER_BASEURL = "http://(EC2 도메인):8088/"  # 111번 줄 근방
 WEBDRIVER_TYPE = "chrome"   # 116번줄 근방에 추가
 WEBDRIVER_OPTION_ARGS = [
-    "--headless", "--disable-gpu", "--window-size=1920x1080", f"--user-data-dir=/tmp/chrome-user-data-{uuid.uuid4()}"
+    "--force-device-scale-factor=2.0",
+    "--high-dpi-support=2.0",
+    "--headless",
+    "--disable-gpu",
+    "--disable-dev-shm-usage",
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-extensions",
 ]   # 윗 줄에 이어서 추가
 ```
 위의 같은 파일 이곳 저곳에 퍼져 있습니다. 잘 찾아서 수정해주시기 바랍니다.
 
-* 에러: 메일을 보내는데 셀레니움-크롬으로 이미지를 찍을 수 없는 버그가 있어 사진을 찍을 수 없습니다. 해결이 필요합니다.
+도커파일 182줄 부근에 크로미움 드라이버 설치 코드도 삽입해 줍니다.
+```bash
+vim Dockerfile
+```
+```Dockerfile
+RUN apt-get update && apt-get install -y \
+    unzip \
+    wget \
+    libgconf-2-4 \
+    && wget https://storage.googleapis.com/chrome-for-testing-public/133.0.6943.53/linux64/chromedriver-linux64.zip \
+    && unzip chromedriver-linux64.zip \
+    && mv chromedriver-linux64/chromedriver /usr/local/bin/ \
+    && chmod +x /usr/local/bin/chromedriver \
+    && rm -rf chromedriver-linux64.zip chromedriver-linux64 \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+```
 
 5. 도커 컴포즈로 슈퍼셋 설치 및 실행
 
@@ -150,6 +171,8 @@ docker-compose -f docker-compose-non-dev.yml up -d
 ```
 
 맨 마지막에 오는 -d는 선택사항입니다. 슈퍼셋 로그를 라이브로 보고싶다면 -d 옵션을 붙이지 않아도 됩니다.
+
+_슈퍼셋의 초기 아이디 비밀번호는 admin/admin입니다. 보안을 위해 로그인 후 settings -> List Users에서 유저 추가하고 관리자 비밀번호를 바꾸시길 바랍니다_
 
 참고로 레드 쉬프트를 종료하는 방법은 다음과 같습니다.
 
