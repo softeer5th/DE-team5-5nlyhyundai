@@ -80,7 +80,7 @@ with DAG(
 
     trigger_s3_redshift_dag = TriggerDagRunOperator(
     task_id='trigger_s3_redshift_dag',
-    trigger_dag_id='test_s3_redshift',
+    trigger_dag_id='s3_redshift',
     conf={
         'from_dag': 'emr_transform_dag',
         'checked_at': "{{ task_instance.xcom_pull(task_ids='checked_at_checker', key='checked_at') }}"

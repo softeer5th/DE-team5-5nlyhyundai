@@ -19,14 +19,19 @@ def checked_at_checker(**context):
     hour = str(checked_at.hour)
     minute = str(checked_at.minute)
 
+    # "s3a://transform-emr/output"
+    # output/posts/{checked_at_date}/{hour}/{minute}/posts.parquet"
+    # output/comments/{checked_at_date}/{hour}/{minute}/comments.parquet"
+    # output/summary/{checked_at_date}/{hour}/{minute}/summary.parquet"
+
     # S3 키 경로 설정
-    s3_posts_key = f"benz_output/posts/{date}/{hour}/{minute}/posts"
+    s3_posts_key = f"output/posts/{date}/{hour}/{minute}/posts.parquet"
     print(f"[INFO] s3_posts_key: {s3_posts_key}")
     context['task_instance'].xcom_push(key='s3_posts_key', value=s3_posts_key)
-    s3_comments_key = f"benz_output/comments/{date}/{hour}/{minute}/comments"
+    s3_comments_key = f"output/comments/{date}/{hour}/{minute}/comments.parquet"
     print(f"[INFO] s3_comments_key: {s3_comments_key}")
     context['task_instance'].xcom_push(key='s3_comments_key', value=s3_comments_key)
-    s3_summary_key = f"benz_output/summary/{date}/{hour}/{minute}/summary"
+    s3_summary_key = f"output/summary/{date}/{hour}/{minute}/summary.parquet"
     print(f"[INFO] s3_summary_key: {s3_summary_key}")
     context['task_instance'].xcom_push(key='s3_summary_key', value=s3_summary_key)
     return checked_at
