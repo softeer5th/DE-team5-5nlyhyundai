@@ -6,7 +6,7 @@
 브랜드 이미지에 타격이 갈만한 수준의 커뮤니티 여론이 악화됨을 감지하면 사용자에게 알림 메일을 보내 즉각적으로 커뮤니티 여론을 인지할 수 있게 됩니다.
 
 # 데이터 파이프라인
-[이미지 링크 주소]
+![프로젝트](https://github.com/softeer5th/DE-team5-5nlyhyundai/blob/Documentaion/readmeSrc/aws-5-2.png)
 * [extract](https://github.com/softeer5th/DE-team5-5nlyhyundai/tree/Documentaion/src/awslambda/extract)
 
   디시인사이드, 클리앙, 보배드림 커뮤니티 텍스트 데이터를 크롤링 해 옵니다.
