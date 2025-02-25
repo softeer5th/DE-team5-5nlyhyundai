@@ -9,6 +9,7 @@
 ## `dag/`
 
 ### `lambda_search_detail_s3.py` | Extract
+![Extract Dag](/readmeSrc/airflow_extract.png)
   1. 환경 체크(DEV / PROD), checked_at 등 각종 시작 환경을 체크합니다.
 
 
@@ -63,6 +64,7 @@
 ---
 
 ### `emr_transform_dag.py` ㅣ Transform
+![Transform Dag](/readmeSrc/airflow_transform.png)
  1. checked_at 검사: checked_at을 체크하여 해당 시간대의 S3 키값을 가져옵니다.
 
  2. EMR Step 오퍼레이터: EMR Step을 환경에 맞게 실행합니다.
@@ -76,6 +78,7 @@
 ---
 
 ### `s3_redshift.py` | Load
+![Load Dag](/readmeSrc/airflow_load.png)
   1. checked_at 검사: checked_at을 체크하여 해당 시간대의 S3 키값을 가져옵니다. 그리고 post와 comment, summary에 대한 key값을 생성합니다.
 
   2. S3 TO Redshift 오퍼레이터: Redshift에 S3 데이터를 적재합니다.
