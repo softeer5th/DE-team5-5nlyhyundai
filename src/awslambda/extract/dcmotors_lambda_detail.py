@@ -244,4 +244,4 @@ def lambda_handler(event, context):
         }
 
     driver.quit()
-    return {"status_code": 200, "body": json.dumps({"body": "[INFO] DETAIL / S3 저장 성공"})}
+    return {"status_code": 200, "body": json.dumps({"body": f"[INFO] DETAIL / S3 저장 성공 {len(crawled_post)}"})}

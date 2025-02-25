@@ -109,7 +109,6 @@ def generate_lambda_search_configs(**context) -> List[Dict]:
         for function_name in function_names:
             lambda_search_configs.append({
                 'function_name': function_name,
-                'func_id': keyword,
                 'task_id': f"invoke_lambda_{function_name}_{keyword}".replace(' ', '_'),
                 'payload': json.dumps({
                     'checked_at': checked_at,
@@ -120,6 +119,12 @@ def generate_lambda_search_configs(**context) -> List[Dict]:
             })
     print(f"총 search 람다 갯수 : {len(lambda_search_configs)}")
     return lambda_search_configs
+
+def invoke_lambda_handler(task_id, **context):
+    task_instance = context['task_instance']
+    response = task_instance.xcom_pull(task_ids='lambda_task')
+    if response.json().get('status_code') == '403':
+        raise AirflowException(f"Lambda {task_id} returned 403 Forbidden") 
 
 @task
 def invoke_lambda(config, retries:int, invocation_type='RequestResponse', **context):
@@ -181,7 +186,7 @@ def generate_lambda_detail_configs(**context) -> List[dict]:
     print(f"보배: {details_count[0]}, 클리앙: {details_count[1]}, 디시인사이드: {details_count[2]}")
 
     # 20개 당 하나씩 처리
-    detail_batch_size = int(Variable.get('DETAIL_BATCH_SIZE')) # 현재 150개로 설정. (어차피 그 이하는 키는 비용이 더욱 나감)
+    detail_batch_size = int(Variable.get('DETAIL_BATCH_SIZE')) # 현재 150개로 설정. 배치 더 작게 해도 괜찮음. 어차피 라운드 로빈.
     crawler_counts = [math.ceil(v / detail_batch_size) for v in details_count]
 
     max_count = max(crawler_counts)

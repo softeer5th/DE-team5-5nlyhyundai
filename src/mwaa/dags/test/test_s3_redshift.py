@@ -10,14 +10,14 @@ from airflow.operators.python import PythonOperator
 from airflow.models import Variable
 
 @task(task_id='checked_at_checker')
-def checked_at_checker(checked_at:str, **context):
+def checked_at_checker(**context):
     print("[INFO] EMR transform dag 시작 및 형변환")
     checked_at = context['dag_run'].conf['checked_at']
-    kst_checked_at = datetime.strptime(checked_at, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=None) + timedelta(hours=9)  # UTC+9 (KST)
-    print(f'크롤링 시작 시간: {checked_at}')
-    date = kst_checked_at.date().strftime("%Y-%m-%d")
-    hour = str(kst_checked_at.hour)
-    minute = str(kst_checked_at.minute)
+    checked_at = datetime.strptime(checked_at, "%Y-%m-%dT%H:%M:%S") # UTC+9 (KST)
+    print(f'크롤링 시작 시간 (한국 UTC+9): {checked_at}')
+    date = checked_at.date().strftime("%Y-%m-%d")
+    hour = str(checked_at.hour)
+    minute = str(checked_at.minute)
     
     emr_output_bucket = Variable.get("EMR_OUTPUT_BUCKET")
 
@@ -54,12 +54,9 @@ with DAG(
 ) as dag:
     # 변수 체크
     Variable.get("EMR_OUTPUT_BUCKET")
-
-    # 이전 DAG에서 전달된 데이터 받기
-    checked_at = "{{ dag_run.conf['checked_at'] }}"
     # checked_at = "2080-12-30T00:00:00" # UTC 시간
     # 시간 처리 (한국시간 변환)
-    checked_at = checked_at_checker(checked_at)    
+    checked_at = checked_at_checker()    
     
     # Post
     load_to_redshift1 = S3ToRedshiftOperator(

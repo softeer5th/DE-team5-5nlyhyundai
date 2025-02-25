@@ -31,8 +31,8 @@ def search(event, context):
     # parameters
     timestamp = event.get("checked_at")
     query = event.get("keyword")
-    #start_date = event.get("start_date")
-    #end_date = event.get("end_date")
+    # start_date = event.get("start_date")
+    # end_date = event.get("end_date")
     
     if timestamp:
         #event_time = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f%z")
@@ -86,6 +86,7 @@ def search(event, context):
 
         soup = BeautifulSoup(response.content, "html.parser")
         if not soup.find("a", class_="board-nav-page active"):
+            print("status code:", response.status_code)
             break
 
         posts_raw = soup.find_all("div", class_="list_item symph_row jirum")
