@@ -31,9 +31,13 @@
   실시간 탭에는 브랜드 및 신차 언급 지표, 부정 텍스트 지표를 추이를 보여줌으로써 차량의 이슈도를 트래킹하면서 부정적인 이슈를 감지하고 대처할 수 있도록 도와줍니다.
   종합 분석 탭에서는 1시간 단위 및 하루 단위로 종합적인 분석 지표를 제공하여, 단순 실시간 모니터링을 넘어 더 깊이 있는 인사이트를 도출할 수 있도록 구성하였습니다.
 
-* Airflow
+* [Airflow](https://github.com/softeer5th/DE-team5-5nlyhyundai/tree/Documentaion/src/mwaa)
 
   프로젝트 전체 과정을 관리합니다.
   일정 배치 주기(5분)마다 Extract, Transform, Load 과정을 호출하고, 이를 통해 데이터 파이프라인을 관리합니다.
+
+* [RDS](https://github.com/softeer5th/DE-team5-5nlyhyundai/tree/Documentaion/src/rds)
+
+  
 
 위에 나열된 각 요소의 설정을 마치면 5nly HYUNDAI 팀의 데이터 파이프라인을 구성할 수 있습니다.
