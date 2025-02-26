@@ -218,9 +218,11 @@ def generate_lambda_detail_configs(**context) -> List[dict]:
     crawler_counts = [math.ceil(v / detail_batch_size) for v in details_count]
     print(f"Detail 배치 사이즈: {detail_batch_size}")
     print(f"보배: {crawler_counts[0]}, 클리앙: {crawler_counts[1]}, 디시인사이드: {crawler_counts[2]}")
-
+    crawler_counts[1] = crawler_counts[1] + 2 if crawler_counts[1] > 0  else 0 # 클리앙은 두 번 더.
+    print(f"클리앙은 두 번 더: {crawler_counts[1]}")
     max_count = max(crawler_counts)
     checked_at = context['task_instance'].xcom_pull(task_ids='set_environment', key='checked_at')
+
 
     # 라운드 로빈 방식으로 배치
     for idx in range(max_count):
@@ -235,6 +237,17 @@ def generate_lambda_detail_configs(**context) -> List[dict]:
                         'checked_at': checked_at,
                         })
                 })
+            elif count and 'clien' in function_name.lower():
+                lambda_detail_configs.append({
+                    'function_name': function_name,
+                    'task_id': f"invoke_lambda_{function_name}_all".replace(' ', '_'),
+                    'func_id': idx,
+                    'payload': json.dumps({
+                        'id':f"invoke_lambda_{function_name}_all".replace(' ', '_'),
+                        'checked_at': checked_at,
+                        })
+                })
+    
     print(f"총 Detail 람다 갯수 : {len(lambda_detail_configs)}")
     return lambda_detail_configs
 
