@@ -21,16 +21,12 @@ def checked_at_checker(**context):
 
     # "s3a://transform-emr/output"
     # output/posts/{checked_at_date}/{hour}/{minute}/posts.parquet"
-    # output/comments/{checked_at_date}/{hour}/{minute}/comments.parquet"
     # output/summary/{checked_at_date}/{hour}/{minute}/summary.parquet"
 
     # S3 키 경로 설정
     s3_posts_key = f"output/posts/{date}/{hour}/{minute}/posts.parquet"
     print(f"[INFO] s3_posts_key: {s3_posts_key}")
     context['task_instance'].xcom_push(key='s3_posts_key', value=s3_posts_key)
-    s3_comments_key = f"output/comments/{date}/{hour}/{minute}/comments.parquet"
-    print(f"[INFO] s3_comments_key: {s3_comments_key}")
-    context['task_instance'].xcom_push(key='s3_comments_key', value=s3_comments_key)
     s3_summary_key = f"output/summary/{date}/{hour}/{minute}/summary.parquet"
     print(f"[INFO] s3_summary_key: {s3_summary_key}")
     context['task_instance'].xcom_push(key='s3_summary_key', value=s3_summary_key)
@@ -62,7 +58,6 @@ with DAG(
     checked_at = checked_at_checker()    
     
     Variable.get("POST_TABLE")
-    Variable.get("COMMENT_TABLE")
     Variable.get("SUMMARY_TABLE")
     # Post
     load_to_redshift_post = S3ToRedshiftOperator(
@@ -71,20 +66,6 @@ with DAG(
         table=Variable.get("POST_TABLE"),                  # 대상 테이블명
         s3_bucket=Variable.get('EMR_OUTPUT_BUCKET'),             # S3 버킷명
         s3_key="{{ task_instance.xcom_pull(task_ids='checked_at_checker', key='s3_posts_key') }}",  # S3 파일 경로
-        copy_options=[
-            "FORMAT AS PARQUET",
-        ],
-        aws_conn_id='aws_default',           # AWS Connection ID
-        redshift_conn_id='redshift_default', # Redshift Connection ID
-        dag=dag
-    )
-    # Comment
-    load_to_redshift_comment = S3ToRedshiftOperator(
-        task_id='load_to_redshift_comment',
-        schema='public',                # Redshift 스키마
-        table=Variable.get("COMMENT_TABLE"),                  # 대상 테이블명
-        s3_bucket=Variable.get('EMR_OUTPUT_BUCKET'),             # S3 버킷명
-        s3_key="{{ task_instance.xcom_pull(task_ids='checked_at_checker', key='s3_comments_key') }}",  # S3 파일 경로,  # S3 파일 경로
         copy_options=[
             "FORMAT AS PARQUET",
         ],
@@ -108,7 +89,6 @@ with DAG(
     )
 
     checked_at >> [
+            load_to_redshift_summary,
             load_to_redshift_post, 
-            load_to_redshift_comment,
-            load_to_redshift_summary
         ]

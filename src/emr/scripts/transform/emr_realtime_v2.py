@@ -67,9 +67,6 @@ for col_name in missing_cols_df2:
 for col_name in missing_cols_df:
     df = df.withColumn(col_name, lit(None))
 
-print(df.count())
-print(df2.count())
-
 # # 2️⃣ 동일한 컬럼 순서로 정렬 후 union
 common_columns = sorted(list(df.columns))
 df = df.select(common_columns)

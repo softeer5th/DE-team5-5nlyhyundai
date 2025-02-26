@@ -23,7 +23,7 @@ default_args = {
     'email_on_retry': False,
     'retries': 0,
     'retry_delay': timedelta(seconds=30),  # 빠른 재시도를 위해 30초로 설정
-    'execution_timeout': timedelta(minutes=5)  # 10분 제한 설정
+    'execution_timeout': timedelta(minutes=5)  # 기본은 4분 제한 설정
 }
 
 @task(task_id='set_environment')
@@ -153,7 +153,7 @@ def generate_lambda_search_configs(**context) -> List[Dict]:
 #         raise AirflowException(f"[ERROR] Lambda {task_id} returned 500 / DB 연결 오류")
 
 @task
-def invoke_lambda(config, retries:int, invocation_type='RequestResponse', **context):
+def invoke_lambda(config, lambda_timeout, retries:int, retry_delay:int, invocation_type='RequestResponse', **context):
     print(f"Invoke Lambda: {config['function_name']}")
     try:
         operator = LambdaInvokeFunctionOperator(
@@ -162,15 +162,15 @@ def invoke_lambda(config, retries:int, invocation_type='RequestResponse', **cont
             payload=config['payload'],
             retries=retries,
             invocation_type=invocation_type,
-            retry_delay=timedelta(seconds=10), # PRODUCTION
-            execution_timeout=timedelta(minutes=2), # PRODUCTION
+            retry_delay=timedelta(seconds=retry_delay), # PRODUCTION
+            execution_timeout=timedelta(minutes=lambda_timeout), # PRODUCTION
             # https://airflow.apache.org/docs/apache-airflow-providers-amazon/stable/operators/lambda.html
             # aws client 설정.
             botocore_config={
-                'connect_timeout': 120,
-                'read_timeout': 120,
+                'connect_timeout': lambda_timeout,
+                'read_timeout': lambda_timeout,
                 'tcp_keepalive': True,
-                'max_pool_connections': 100, # default 10
+                'max_pool_connections': 200, # default 10
                 'retries': {
                     'max_attempts': 2,
                     'total_max_attempts': 10,
@@ -218,9 +218,11 @@ def generate_lambda_detail_configs(**context) -> List[dict]:
     crawler_counts = [math.ceil(v / detail_batch_size) for v in details_count]
     print(f"Detail 배치 사이즈: {detail_batch_size}")
     print(f"보배: {crawler_counts[0]}, 클리앙: {crawler_counts[1]}, 디시인사이드: {crawler_counts[2]}")
-
+    crawler_counts[1] = crawler_counts[1] + 2 if crawler_counts[1] > 0  else 0 # 클리앙은 두 번 더.
+    print(f"클리앙은 두 번 더: {crawler_counts[1]}")
     max_count = max(crawler_counts)
     checked_at = context['task_instance'].xcom_pull(task_ids='set_environment', key='checked_at')
+
 
     # 라운드 로빈 방식으로 배치
     for idx in range(max_count):
@@ -235,6 +237,17 @@ def generate_lambda_detail_configs(**context) -> List[dict]:
                         'checked_at': checked_at,
                         })
                 })
+            elif count and 'clien' in function_name.lower():
+                lambda_detail_configs.append({
+                    'function_name': function_name,
+                    'task_id': f"invoke_lambda_{function_name}_all".replace(' ', '_'),
+                    'func_id': idx,
+                    'payload': json.dumps({
+                        'id':f"invoke_lambda_{function_name}_all".replace(' ', '_'),
+                        'checked_at': checked_at,
+                        })
+                })
+    
     print(f"총 Detail 람다 갯수 : {len(lambda_detail_configs)}")
     return lambda_detail_configs
 
@@ -243,6 +256,7 @@ with DAG(
     default_args=default_args,
     description='[PROD] Trigger Lambda functions and Load data to S3',
     schedule_interval=timedelta(minutes=5),
+    dagrun_timeout=timedelta(minutes=5),
     catchup=False
 ) as dag:
     # 변수 체크
@@ -260,11 +274,11 @@ with DAG(
     # RDS에서 키워드 가져오기
     lambda_search_configs = generate_lambda_search_configs()
     # Dynamic task mapping!
-    search_lambda_tasks = invoke_lambda.partial(invocation_type='RequestResponse', retries=3).expand(config=lambda_search_configs)
+    search_lambda_tasks = invoke_lambda.partial(invocation_type='RequestResponse', retries=5, retry_delay=3, lambda_timeout=70).expand(config=lambda_search_configs)
     
     lambda_detail_configs = generate_lambda_detail_configs()
 
-    detail_lambda_tasks = invoke_lambda.partial(invocation_type='RequestResponse', retries=3).expand(config=lambda_detail_configs)
+    detail_lambda_tasks = invoke_lambda.partial(invocation_type='RequestResponse', retries=1, retry_delay=1, lambda_timeout=200).expand(config=lambda_detail_configs)
 
     trigger_second_dag = TriggerDagRunOperator(
         task_id='trigger_emr_dag',

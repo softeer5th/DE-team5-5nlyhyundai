@@ -62,14 +62,17 @@ with DAG(
                         '--deploy-mode', 'cluster',
                         '--conf', 'spark.yarn.maxAppAttempts=4',  # YARN 레벨의 재시도 설정
                         '--conf', 'spark.task.maxFailures=4',     # Spark 태스크 레벨의 재시도 설정
-                        "--conf","spark.hadoop.fs.s3a.connection.timeout=600000",
-                        "--conf","spark.hadoop.fs.s3a.socket.timeout=600000",
-                        "--conf","spark.hadoop.fs.s3a.connection.establish.timeout=600000",
-                        "--conf","spark.hadoop.fs.s3a.connection.maximum=10000",
-                        "--conf","spark.hadoop.fs.s3a.read.timeout=600000",
+                        "--conf","spark.hadoop.fs.s3a.connection.timeout=120000", # 커넥션 풀에서 나온 timeout. 2분
+                        "--conf","spark.hadoop.fs.s3a.socket.timeout=120000", # socket timeout. 2분
+                        "--conf","spark.hadoop.fs.s3a.connection.establish.timeout=120000", # 3way handshake. timeout 2분
+                        "--conf","spark.hadoop.fs.s3a.connection.acquisition.timeout=60000", # 커넥션 풀에서 커넥션 가져오는 timeout. 60초
+                        "--conf","spark.hadoop.fs.s3a.connection.maximum=100", # 커넥션 풀 최대 갯수. 
+                        "--conf","spark.hadoop.fs.s3a.connection.idle.time=120000", # 유휴 기본값: 60000ms
+                        "--conf","spark.hadoop.fs.s3a.read.timeout=120000", # 읽기 timeout. 2분
                         "--conf","spark.hadoop.fs.s3a.connection.ssl.enabled=true",
-                        "--conf","spark.hadoop.fs.s3a.attempts.maximum=100",
-                        Variable.get("JOB_SCRIPT_PATH"), #'s3://transform-emr/EMR-2.py'
+                        "--conf","spark.hadoop.fs.s3a.attempts.maximum=1000",
+                        "--conf", "spark.hadoop.fs.s3a.block.size=1048576", # 1MB block size
+                        Variable.get("JOB_SCRIPT_PATH"), #'s3://transform-emr/emr_realtime_v3.py'
                         '--checked_at', "{{ task_instance.xcom_pull(task_ids='checked_at_checker', key='checked_at') }}",
                     ]
                 }
@@ -77,6 +80,8 @@ with DAG(
         ],
         retries=0,  # 최대 재시도 횟수
     )
+
+    # spark-submit --deploy-mode cluster --conf spark.yarn.maxAppAttempts=4 --conf spark.task.maxFailures=4 --conf spark.hadoop.fs.s3a.connection.timeout=300000 --conf spark.hadoop.fs.s3a.socket.timeout=300000 --conf spark.hadoop.fs.s3a.connection.establish.timeout=300000 --conf spark.hadoop.fs.s3a.connection.maximum=1000 --conf spark.hadoop.fs.s3a.read.timeout=300000 --conf spark.hadoop.fs.s3a.connection.ssl.enabled=true --conf spark.hadoop.fs.s3a.attempts.maximum=100 --conf spark.hadoop.fs.s3a.block.size=1048576 s3://transform-emr/emr_realtime_v2.py --checked_at 2088-02-10T01:00:03
 
     trigger_s3_redshift_dag = TriggerDagRunOperator(
     task_id='trigger_s3_redshift_dag',
