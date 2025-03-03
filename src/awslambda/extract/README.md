@@ -71,10 +71,10 @@ aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS
 
 각 람다는 실행 목적을 달성하면 미리 종료되지만 안정성을 위해 15분으로 설정해주시기 바랍니다.
 
-* 이름이 Detail로 끝나는 람다는 IAM 권한 중 S3에 접속하는 권한이 필요합니다.
-* 이상의 작업을 AWS 콘솔에서 진행합니다.
-
 4. 람다 결과물을 저장할 S3 버켓을 설정합니다.
+
+* .env.lambda 파일에 기입한 S3 이름과 맞는 버켓을 만듭니다.
+* 이름이 Detail로 끝나는 람다는 IAM 권한(lambda role) 중 S3에 접속하는 권한이 필요합니다.
 
 
 
