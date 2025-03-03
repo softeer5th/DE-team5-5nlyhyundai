@@ -119,7 +119,7 @@ SMTP_PORT = 587         # TLS 기본 프로토콜입니다.
 SMTP_PASSWORD = '구글 앱 비밀번호를 발급받아 사용합니다.'
 SMTP_MAIL_FROM = '당신의 gmail 주소'
 ```
-  _구글 앱 비밀번호 사이의 공백은 ascii 문자가 아니라서 그대로 복사 붙여넣기 하면 ascii 문제 코덱 에러 뜹니다. visual code 등에 붙여넣기 해서 공백 문자를 지우고 다시 스페이스바로 ascii 공백문자를 추가해주시기 바랍니다._
+  _구글 앱 비밀번호 사이의 공백은 ascii 문자가 아니라서 그대로 복사 붙여넣기 하면 ascii 코덱 에러 뜹니다. visual code 등에 붙여넣기 해서 공백 문자를 지우고 다시 스페이스바로 ascii 공백문자를 추가해주시기 바랍니다._
 
 * 다음을 부분을 수정하거나 추가합니다
 
@@ -160,12 +160,12 @@ RUN apt-get update && apt-get install -y \
 
 5. 도커 컴포즈로 슈퍼셋 설치 및 실행
 
-수퍼셋 이미지를 빌드합니다.
+슈퍼셋 이미지를 빌드합니다.
 ```bash
 docker-compose -f docker-compose-non-dev.yml build
 ```
 
-수퍼셋 이미지를 켭니다.
+슈퍼셋 이미지를 켭니다.
 ```bash
 docker-compose -f docker-compose-non-dev.yml up -d
 ```
@@ -174,7 +174,7 @@ docker-compose -f docker-compose-non-dev.yml up -d
 
 _슈퍼셋의 초기 아이디 비밀번호는 admin/admin입니다. 보안을 위해 로그인 후 settings -> List Users에서 유저 추가하고 관리자 비밀번호를 바꾸시길 바랍니다_
 
-참고로 레드 쉬프트를 종료하는 방법은 다음과 같습니다.
+참고로 슈퍼셋을 종료하는 방법은 다음과 같습니다.
 
 * -d 옵션을 붙이지 않았다면, "ctrl + C" 입력으로 슈퍼셋을 종료할 수 있습니다.
 * -d 옵션을 붙이고 실행했다면 다음 명령어를 입력하여 슈퍼셋 종료가 가능합니다.
